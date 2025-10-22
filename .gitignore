@@ -24,18 +24,23 @@ env/
 # Logs
 *.log
 
-# User generated files
-#    .env
-
 # Test generated directories
 htmlcov/
 .coverage
 
 
+
+
 # Large datasets
 ## NetCDF files (all .nc files)
-#   data/**/*.nc
-#   data/**/*.npy
-#   data/**/*.pt
-#   data/**/*.csv
+backend/data/**/*.nc
+backend/data/**/*.npy
+backend/data/**/*.pt
+backend/data/**/*.csv
+backend/data/**/*.npz
 ## But keep this specific file
+
+# User generated files
+## Model parameters
+backend/models/**/*.pth
+backend/models/**/*.h5
