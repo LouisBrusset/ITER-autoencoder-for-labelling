@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Autoencoder Training Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Entraînement Autoencoder</h1>
+        
+        <div class="controls">
+            <button id="startTraining" onclick="startTraining()">Démarrer l'Entraînement</button>
+            <button id="resetTraining" onclick="resetTraining()">Réinitialiser</button>
+        </div>
+        
+        <div class="status">
+            <h3>Status de l'Entraînement</h3>
+            <div id="trainingStatus">
+                <p>État: <span id="statusText">En attente</span></p>
+                <p>Époque: <span id="epochText">0</span>/<span id="totalEpochs">0</span></p>
+                <p>Loss actuelle: <span id="lossText">0.0000</span></p>
+            </div>
+        </div>
+        
+        <div class="plot-container">
+            <h3>Courbe d'Entraînement</h3>
+            <img id="trainingPlot" style="display:none; max-width: 100%;">
+            <div id="noPlot" class="no-plot">Aucun graphique disponible</div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = "http://localhost:8000";
+        let trainingInterval = null;
+        let plotInterval = null;
+
+        // Démarrer l'entraînement
+        async function startTraining() {
+            try {
+                const response = await fetch(`${API_BASE}/start-training`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                document.getElementById('statusText').textContent = 'Entraînement en cours';
+                document.getElementById('totalEpochs').textContent = data.total_epochs;
+                
+                // Démarrer la surveillance de l'entraînement
+                startMonitoring();
+                
+            } catch (error) {
+                console.error('Erreur:', error);
+                alert('Erreur lors du démarrage de l\'entraînement');
+            }
+        }
+
+        // Réinitialiser l'entraînement
+        async function resetTraining() {
+            try {
+                await fetch(`${API_BASE}/reset-training`, {
+                    method: 'POST'
+                });
+                
+                document.getElementById('statusText').textContent = 'En attente';
+                document.getElementById('epochText').textContent = '0';
+                document.getElementById('lossText').textContent = '0.0000';
+                document.getElementById('trainingPlot').style.display = 'none';
+                document.getElementById('noPlot').style.display = 'block';
+                
+                // Arrêter la surveillance
+                stopMonitoring();
+                
+            } catch (error) {
+                console.error('Erreur:', error);
+            }
+        }
+
+        // Surveiller l'état de l'entraînement
+        function startMonitoring() {
+            // Vérifier l'état toutes les 500ms
+            trainingInterval = setInterval(updateTrainingStatus, 500);
+            // Mettre à jour le plot toutes les 1000ms
+            plotInterval = setInterval(updateTrainingPlot, 1000);
+        }
+
+        function stopMonitoring() {
+            if (trainingInterval) clearInterval(trainingInterval);
+            if (plotInterval) clearInterval(plotInterval);
+        }
+
+        // Mettre à jour le statut de l'entraînement
+        async function updateTrainingStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/training-status`);
+                const data = await response.json();
+                
+                document.getElementById('epochText').textContent = data.current_epoch;
+                document.getElementById('lossText').textContent = data.current_loss.toFixed(4);
+                
+                if (!data.is_training && data.current_epoch > 0) {
+                    document.getElementById('statusText').textContent = 'Entraînement terminé';
+                    stopMonitoring();
+                }
+                
+            } catch (error) {
+                console.error('Erreur:', error);
+            }
+        }
+
+        // Mettre à jour le plot d'entraînement
+        async function updateTrainingPlot() {
+            try {
+                const response = await fetch(`${API_BASE}/training-plot`);
+                const data = await response.json();
+                
+                if (data.image) {
+                    const plotImg = document.getElementById('trainingPlot');
+                    plotImg.src = data.image;
+                    plotImg.style.display = 'block';
+                    document.getElementById('noPlot').style.display = 'none';
+                }
+                
+            } catch (error) {
+                console.error('Erreur:', error);
+            }
+        }
+
+        // Initialisation
+        document.addEventListener('DOMContentLoaded', function() {
+            updateTrainingStatus();
+        });
+    </script>
+</body>
+</html>
