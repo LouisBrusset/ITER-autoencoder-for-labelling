@@ -1,9 +1,10 @@
+/*Global reset and box model setup*/
 * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
 }
-
+/*Base page appearance*/
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     line-height: 1.6;
@@ -11,7 +12,7 @@ body {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     min-height: 100vh;
 }
-
+/*Main app container*/
 .container {
     max-width: 1200px;
     margin: 0 auto;
@@ -20,25 +21,29 @@ body {
     box-shadow: 0 0 20px rgba(0,0,0,0.1);
 }
 
+
+
+
+/*Header bar styles*/
 header {
     background: #2c3e50;
     color: white;
     padding: 2rem;
     text-align: center;
 }
-
+/*Header title*/
 header h1 {
     margin-bottom: 1rem;
     font-size: 2.5rem;
 }
-
+/*Top navigation row*/
 .navigation {
     display: flex;
     justify-content: center;
     gap: 2rem;
     margin-top: 1rem;
 }
-
+/*Navigation link appearance*/
 .nav-link {
     color: #ecf0f1;
     text-decoration: none;
@@ -47,22 +52,32 @@ header h1 {
     transition: all 0.3s ease;
     font-weight: 500;
 }
-
+/*Navigation hover / active state*/
 .nav-link:hover,
 .nav-link.active {
     background: #3498db;
     color: white;
 }
 
+
+
+
+
+
+/*Section container (pages)*/
 .section {
     display: none;
     padding: 2rem;
 }
-
+/*Active section*/
 .section.active {
     display: block;
 }
 
+
+
+
+/*Section headings*/
 h2 {
     color: #2c3e50;
     margin-bottom: 2rem;
@@ -70,7 +85,7 @@ h2 {
     border-bottom: 3px solid #3498db;
     padding-bottom: 0.5rem;
 }
-
+/*Card component*/
 .card {
     background: #f8f9fa;
     border: 1px solid #e9ecef;
@@ -80,23 +95,27 @@ h2 {
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
 }
 
+
+
+/*Card subheading*/
 .card h3 {
     color: #495057;
     margin-bottom: 1.5rem;
     font-size: 1.3rem;
 }
-
+/*Form group spacing*/
 .form-group {
     margin-bottom: 1rem;
 }
 
+/*Form labels*/
 .form-group label {
     display: block;
     margin-bottom: 0.5rem;
     font-weight: 500;
     color: #495057;
 }
-
+/*Form controls (inputs & selects)*/
 .form-group input,
 .form-group select {
     width: 100%;
@@ -106,6 +125,11 @@ h2 {
     font-size: 1rem;
 }
 
+/*
+Base button styles
+Shared base styles for buttons. Variant styles are built on top
+of this (primary, secondary, warning, small).
+*/
 button {
     padding: 0.75rem 1.5rem;
     border: none;
@@ -116,39 +140,48 @@ button {
     transition: all 0.3s ease;
     margin: 0.25rem;
 }
-
+/*Primary button*/
 .btn-primary {
     background: #3498db;
     color: white;
 }
-
+/*Primary button hover*/
 .btn-primary:hover {
     background: #2980b9;
 }
-
+/*Secondary button*/
 .btn-secondary {
     background: #95a5a6;
     color: white;
 }
-
+/*Secondary button hover*/
 .btn-secondary:hover {
     background: #7f8c8d;
 }
-
+/*Warning / destructive button*/
 .btn-warning {
     background: #e74c3c;
     color: white;
 }
-
+/*Warning hover*/
 .btn-warning:hover {
     background: #c0392b;
 }
-
+/*Small button variant*/
 .btn-small {
     padding: 0.25rem 0.5rem;
     font-size: 0.8rem;
 }
 
+
+
+
+
+/*
+File list item
+Layout for individual file entries (available datasets / models)
+using a horizontal flex row with spacing.
+*/
 .file-item {
     display: flex;
     align-items: center;
@@ -156,35 +189,64 @@ button {
     padding: 0.5rem;
     border-bottom: 1px solid #eee;
 }
-
+/*
+Remove bottom border on the last file item
+Prevents an extra divider after the final list item.
+*/
 .file-item:last-child {
     border-bottom: none;
 }
 
+
+
+
+
+/*
+Generic status box
+Container for status messages (success/warning/error). Base
+padding and border-radius are shared by variants below.
+*/
 .status-info {
     padding: 1rem;
     border-radius: 5px;
     margin: 1rem 0;
 }
-
+/*
+Success status variant
+Green background used to indicate successful operations.
+*/
 .success {
     background: #d4edda;
     color: #155724;
     border: 1px solid #c3e6cb;
 }
-
+/*
+Warning status variant
+Yellow background for cautionary messages (non-critical issues).
+*/
 .warning {
     background: #fff3cd;
     color: #856404;
     border: 1px solid #ffeaa7;
 }
-
+/*
+Error status variant
+Red background for error messages and critical failures.
+*/
 .error {
     background: #f8d7da;
     color: #721c24;
     border: 1px solid #f5c6cb;
 }
 
+
+
+
+/*
+Point info box
+Specific informational box used in the latent space view to
+display details when hovering points.
+*/
 .point-info {
     margin-top: 1rem;
     padding: 1rem;
@@ -193,7 +255,11 @@ button {
     border-radius: 5px;
     text-align: center;
 }
-
+/*
+Status panel used in training card
+A white box with a colored left border used to show training
+status details (epoch, loss, etc.).
+*/
 .status {
     background: white;
     padding: 1rem;
@@ -201,27 +267,36 @@ button {
     margin: 1rem 0;
     border-left: 4px solid #3498db;
 }
-
+/*
+Text inside status panel
+Spacing and weight for lines inside the status box.
+*/
 .status p {
     margin: 0.5rem 0;
     font-weight: 500;
 }
 
-/* Responsive */
+
+
+
+
+
+/*
+Responsive rules
+Adjusts layout and spacing for smaller screens (mobile/tablet):
+make the navigation vertical and reduce paddings.
+*/
 @media (max-width: 768px) {
     .container {
         margin: 0;
     }
-    
     .navigation {
         flex-direction: column;
         gap: 0.5rem;
     }
-    
     .section {
         padding: 1rem;
     }
-    
     .card {
         padding: 1rem;
     }

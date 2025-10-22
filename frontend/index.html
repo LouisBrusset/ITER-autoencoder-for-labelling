@@ -4,67 +4,67 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Autoencoder - Détection d'Anomalies</title>
-    <link rel="stylesheet" href="style.css">
+    <title>Autoencoder - Anomaly Detection</title>
+    <link rel="stylesheet" href="styles/style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 
 <body>
     <div class="container">
         <header>
-            <h1>Autoencoder - Détection d'Anomalies</h1>
+            <h1>Autoencoder - Anomaly Detection</h1>
             <nav class="navigation">
-                <a href="#section-data" class="nav-link active">1. Données</a>
-                <a href="#section-training" class="nav-link">2. Entraînement</a>
-                <a href="#section-visualization" class="nav-link">3. Visualisation</a>
+                <a href="#section-data" class="nav-link active">1. Data</a>
+                <a href="#section-training" class="nav-link">2. Training</a>
+                <a href="#section-visualization" class="nav-link">3. Visualization</a>
             </nav>
         </header>
 
         <!-- SECTION 1 : GESTION DES DONNÉES -->
         <section id="section-data" class="section active">
-            <h2>1. Chargement des Données</h2>
+            <h2>1. Data loading</h2>
             
             <div class="card">
-                <h3>Créer des données synthétiques</h3>
+                <h3>Create synthetic data</h3>
                 <div class="form-group">
-                    <label>Nombre d'échantillons:</label>
+                    <label>Number of samples:</label>
                     <input type="number" id="nSamples" value="1000" min="100" max="10000">
                 </div>
                 <div class="form-group">
-                    <label>Dimension des données:</label>
+                    <label>Data dimension:</label>
                     <input type="number" id="inputDim" value="20" min="5" max="100">
                 </div>
                 <div class="form-group">
-                    <label>Nombre d'anomalies:</label>
+                    <label>Number of anomalies:</label>
                     <input type="number" id="nAnomalies" value="50" min="0" max="200">
                 </div>
-                <button onclick="createSyntheticData()" class="btn-primary">Créer les données</button>
+                <button onclick="createSyntheticData()" class="btn-primary">Create data</button>
             </div>
 
             <div class="card">
-                <h3>Ou uploader un fichier</h3>
+                <h3>Or upload a file</h3>
                 <input type="file" id="fileUpload" accept=".csv,.npz">
-                <button onclick="uploadData()" class="btn-secondary">Uploader</button>
+                <button onclick="uploadData()" class="btn-secondary">Upload</button>
                 <div id="uploadStatus"></div>
             </div>
 
             <div class="card">
-                <h3>Données disponibles</h3>
+                <h3>Available Data</h3>
                 <div id="dataOptions"></div>
                 <div id="currentDataset" class="status-info">
-                    Aucun dataset chargé
+                    No dataset loaded
                 </div>
             </div>
         </section>
 
         <!-- SECTION 2 : ENTRAÎNEMENT -->
         <section id="section-training" class="section">
-            <h2>2. Entraînement du Modèle</h2>
+            <h2>2. Training the Model</h2>
             
             <div class="card">
-                <h3>Paramètres d'entraînement</h3>
+                <h3>Training Parameters</h3>
                 <div class="form-group">
-                    <label>Nombre d'epochs:</label>
+                    <label>Number of epochs:</label>
                     <input type="number" id="trainingEpochs" value="100" min="10" max="1000">
                 </div>
                 <div class="form-group">
@@ -72,48 +72,50 @@
                     <input type="number" id="learningRate" value="0.001" step="0.0001" min="0.0001" max="0.1">
                 </div>
                 <div class="form-group">
-                    <label>Dimension latent:</label>
+                    <label>Latent dimension:</label>
                     <input type="number" id="encodingDim" value="8" min="2" max="20">
                 </div>
-                <button onclick="startTraining()" class="btn-primary" id="startTrainingBtn">Démarrer l'entraînement</button>
+                <button onclick="startTraining()" class="btn-primary" id="startTrainingBtn">Start Training</button>
             </div>
 
             <div class="card">
-                <h3>Modèles sauvegardés</h3>
+                <h3>Saved Models</h3>
                 <div id="modelOptions"></div>
-                <button onclick="loadSelectedModel()" class="btn-secondary">Charger le modèle sélectionné</button>
+                <button onclick="loadSelectedModel()" class="btn-secondary">Load Selected Model</button>
             </div>
 
             <div class="card">
-                <h3>Progression de l'entraînement</h3>
+                <h3>Training Progress</h3>
                 <div class="status">
-                    <p>État: <span id="statusText">En attente</span></p>
-                    <p>Époque: <span id="epochText">0</span>/<span id="totalEpochs">0</span></p>
-                    <p>Loss actuelle: <span id="lossText">0.0000</span></p>
+                    <p>Status: <span id="statusText">Waiting...</span></p>
+                    <p>Epoch: <span id="epochText">0</span>/<span id="totalEpochs">0</span></p>
+                    <p>Current Loss: <span id="lossText">0.0000</span></p>
                 </div>
                 <div style="position: relative; height:400px; width:100%;">
                     <canvas id="trainingChart"></canvas>
                 </div>
-                <button onclick="resetTraining()" class="btn-warning">Réinitialiser</button>
+                <button onclick="resetTraining()" class="btn-warning">Reset</button>
             </div>
         </section>
 
         <!-- SECTION 3 : VISUALISATION -->
         <section id="section-visualization" class="section">
-            <h2>3. Visualisation du Latent Space</h2>
+            <h2>3. Latent Space Visualization</h2>
             
             <div class="card">
-                <h3>Projection 2D du Latent Space</h3>
-                <button onclick="generateLatentSpace()" class="btn-primary">Générer la visualisation</button>
+                <h3>2D Projection of Latent Space</h3>
+                <button onclick="generateLatentSpace()" class="btn-primary">Generate Visualization</button>
                 <div style="position: relative; height:600px; width:100%;">
                     <canvas id="latentSpaceChart"></canvas>
                 </div>
                 <div id="pointInfo" class="point-info">
-                    Survolez les points pour voir les détails
+                    Hover over the points to see details.
                 </div>
             </div>
         </section>
     </div>
+
+
 
     <script>
         const API_BASE = "http://localhost:8000";
@@ -145,6 +147,8 @@
             checkCurrentDataset();
         });
 
+
+
         // === FONCTIONS SECTION 1 : DONNÉES ===
 
         async function loadDataOptions() {
@@ -152,21 +156,21 @@
                 const response = await fetch(`${API_BASE}/data-options`);
                 const data = await response.json();
                 
-                let html = '<h4>Fichiers synthétiques:</h4>';
+                let html = '<h4>Synthetic files:</h4>';
                 data.synthetic_files.forEach(file => {
                     html += `<div class="file-item">
                         <input type="radio" name="dataFile" value="${file}" data-type="synthetic">
                         ${file}
-                        <button onclick="loadDataset('${file}', 'synthetic')" class="btn-small">Charger</button>
+                        <button onclick="loadDataset('${file}', 'synthetic')" class="btn-small">Load</button>
                     </div>`;
                 });
                 
-                html += '<h4>Fichiers uploadés:</h4>';
+                html += '<h4>Uploaded files:</h4>';
                 data.uploaded_files.forEach(file => {
                     html += `<div class="file-item">
                         <input type="radio" name="dataFile" value="${file}" data-type="uploaded">
                         ${file}
-                        <button onclick="loadDataset('${file}', 'uploaded')" class="btn-small">Charger</button>
+                        <button onclick="loadDataset('${file}', 'uploaded')" class="btn-small">Load</button>
                     </div>`;
                 });
                 
@@ -187,18 +191,18 @@
                     { method: 'POST' }
                 );
                 const result = await response.json();
-                alert(`Données créées: ${result.filename}`);
+                alert(`Created data: ${result.filename}`);
                 loadDataOptions();
             } catch (error) {
-                console.error('Erreur:', error);
-                alert('Erreur lors de la création des données');
+                console.error('Error:', error);
+                alert('Error creating data');
             }
         }
 
         async function uploadData() {
             const fileInput = document.getElementById('fileUpload');
             if (!fileInput.files[0]) {
-                alert('Veuillez sélectionner un fichier');
+                alert('Please select a file to upload');
                 return;
             }
             
@@ -212,12 +216,12 @@
                 });
                 const result = await response.json();
                 document.getElementById('uploadStatus').innerHTML = 
-                    `<div class="success">Fichier uploadé: ${result.filename}</div>`;
+                    `<div class="success">Uploaded file: ${result.filename}</div>`;
                 loadDataOptions();
             } catch (error) {
-                console.error('Erreur:', error);
+                console.error('Error:', error);
                 document.getElementById('uploadStatus').innerHTML = 
-                    `<div class="error">Erreur lors de l'upload</div>`;
+                    `<div class="error">Error uploading file</div>`;
             }
         }
 
@@ -229,10 +233,10 @@
                 );
                 const result = await response.json();
                 checkCurrentDataset();
-                alert(`Dataset chargé: ${result.filename}`);
+                alert(`Dataset loaded: ${result.filename}`);
             } catch (error) {
-                console.error('Erreur:', error);
-                alert('Erreur lors du chargement du dataset');
+                console.error('Error:', error);
+                alert('Error loading dataset');
             }
         }
 
@@ -243,13 +247,13 @@
                 
                 if (data.loaded) {
                     document.getElementById('currentDataset').innerHTML = 
-                        `<div class="success">Dataset chargé: ${data.filename} (${data.shape[0]} samples, ${data.shape[1]} features)</div>`;
+                        `<div class="success">Dataset loaded: ${data.filename} (${data.shape[0]} samples, ${data.shape[1]} features)</div>`;
                 } else {
                     document.getElementById('currentDataset').innerHTML = 
-                        '<div class="warning">Aucun dataset chargé</div>';
+                        '<div class="warning">No dataset loaded</div>';
                 }
             } catch (error) {
-                console.error('Erreur:', error);
+                console.error('Error:', error);
             }
         }
 
@@ -295,9 +299,9 @@
                     </div>`;
                 });
                 
-                document.getElementById('modelOptions').innerHTML = html || 'Aucun modèle sauvegardé';
+                document.getElementById('modelOptions').innerHTML = html || 'No saved models available.';
             } catch (error) {
-                console.error('Erreur:', error);
+                console.error('Error:', error);
             }
         }
 
@@ -312,22 +316,22 @@
                     { method: 'POST' }
                 );
                 const result = await response.json();
-                
-                document.getElementById('statusText').textContent = 'Entraînement en cours';
+
+                document.getElementById('statusText').textContent = 'Training in progress...';
                 document.getElementById('totalEpochs').textContent = result.total_epochs;
                 
                 startTrainingMonitoring();
                 
             } catch (error) {
-                console.error('Erreur:', error);
-                alert('Erreur lors du démarrage de l\'entraînement');
+                console.error('Error:', error);
+                alert('Error starting training');
             }
         }
 
         async function loadSelectedModel() {
             const selected = document.querySelector('input[name="modelFile"]:checked');
             if (!selected) {
-                alert('Veuillez sélectionner un modèle');
+                alert('Please select a model');
                 return;
             }
             
@@ -337,10 +341,10 @@
                     { method: 'POST' }
                 );
                 const result = await response.json();
-                alert(`Modèle chargé: ${result.model_loaded}`);
+                alert(`Model loaded: ${result.model_loaded}`);
             } catch (error) {
-                console.error('Erreur:', error);
-                alert('Erreur lors du chargement du modèle');
+                console.error('Error:', error);
+                alert('Error loading model');
             }
         }
 
@@ -364,20 +368,20 @@
                 }
                 
                 if (!data.is_training && data.current_epoch > 0) {
-                    document.getElementById('statusText').textContent = 'Entraînement terminé';
+                    document.getElementById('statusText').textContent = 'Training complete';
                     clearInterval(trainingInterval);
-                    loadModelOptions(); // Recharger la liste des modèles
+                    loadModelOptions(); // Reload model list
                 }
                 
             } catch (error) {
-                console.error('Erreur:', error);
+                console.error('Error:', error);
             }
         }
 
         async function resetTraining() {
             try {
                 await fetch(`${API_BASE}/reset-training`, { method: 'POST' });
-                document.getElementById('statusText').textContent = 'En attente';
+                document.getElementById('statusText').textContent = 'Waiting...';
                 document.getElementById('epochText').textContent = '0';
                 document.getElementById('lossText').textContent = '0.0000';
                 trainingChart.data.labels = [];
@@ -385,7 +389,7 @@
                 trainingChart.update();
                 clearInterval(trainingInterval);
             } catch (error) {
-                console.error('Erreur:', error);
+                console.error('Error:', error);
             }
         }
 
@@ -397,7 +401,7 @@
                 type: 'scatter',
                 data: {
                     datasets: [{
-                        label: 'Points normaux',
+                        label: 'Normal Points',
                         data: [],
                         backgroundColor: 'rgba(54, 162, 235, 0.6)',
                         borderColor: 'rgba(54, 162, 235, 1)',
@@ -444,13 +448,13 @@
                 latentSpaceChart.data.datasets[0].data = normalPoints;
                 latentSpaceChart.data.datasets[1].data = anomalyPoints;
                 latentSpaceChart.update();
-                
-                document.getElementById('pointInfo').innerHTML = 
-                    `${data.points.length} points projetés (${anomalyPoints.length} anomalies détectées)`;
-                    
+
+                document.getElementById('pointInfo').innerHTML =
+                    `${data.points.length} points projected (${anomalyPoints.length} anomalies detected)`;
+
             } catch (error) {
-                console.error('Erreur:', error);
-                alert('Erreur lors de la génération du latent space');
+                console.error('Error:', error);
+                alert('Error generating latent space');
             }
         }
     </script>

@@ -1,20 +1,14 @@
-import torch
 import torch.nn as nn
-import torch.optim as optim
 
 class SimpleAutoencoder(nn.Module):
     def __init__(self, input_dim=20, encoding_dim=8):
-        super(SimpleAutoencoder, self).__init__()
-        
-        # Encodeur
+        super().__init__()
         self.encoder = nn.Sequential(
             nn.Linear(input_dim, 16),
             nn.ReLU(),
             nn.Linear(16, encoding_dim),
             nn.ReLU()
         )
-        
-        # Décodeur
         self.decoder = nn.Sequential(
             nn.Linear(encoding_dim, 16),
             nn.ReLU(),

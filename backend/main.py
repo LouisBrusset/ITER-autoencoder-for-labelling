@@ -1,16 +1,26 @@
+### Standard library imports
+import os
+import json
+import asyncio
+from typing import Optional
+
+### Third-party imports
+# API framework
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-import matplotlib.pyplot as plt
+
+# Data analysis imports
 import numpy as np
-import asyncio
+import matplotlib.pyplot as plt
+import pandas as pd
+
+# Machine learning imports
 import torch
 import torch.nn as nn
-import json
-import os
-import pandas as pd
-from typing import Optional
 import umap
+
+
 
 app = FastAPI()
 
@@ -21,7 +31,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Créer les dossiers nécessaires
 os.makedirs("data/uploaded", exist_ok=True)
 os.makedirs("data/synthetic", exist_ok=True)
 os.makedirs("models/saved", exist_ok=True)
@@ -272,17 +281,39 @@ async def load_model(model_filename: str):
         data = np.load("data/current_dataset.npz")
         input_dim = data['data'].shape[1]
         
-        # Créer le modèle et charger les poids
-        model = SimpleAutoencoder(input_dim=input_dim, encoding_dim=8)
-        model.load_state_dict(torch.load(model_path))
+        # Load the saved state dict first so we can infer encoding dim
+        state = torch.load(model_path)
+        encoding_dim = None
+        if isinstance(state, dict):
+            # common key for second encoder Linear layer
+            if 'encoder.2.weight' in state:
+                encoding_dim = state['encoder.2.weight'].shape[0]
+            else:
+                # try to parse from filename pattern _dim_<n>
+                import re
+                m = re.search(r'_dim_(\d+)', model_filename)
+                if m:
+                    encoding_dim = int(m.group(1))
+
+        if encoding_dim is None:
+            encoding_dim = 8
+
+        # Create model with inferred encoding_dim and load weights
+        model = SimpleAutoencoder(input_dim=input_dim, encoding_dim=encoding_dim)
+        model.load_state_dict(state)
         model.eval()
-        
-        # Stocker le modèle en mémoire (simplifié)
-        torch.save(model.state_dict(), "models/current_model.pth")
+
+        # Store the model state as current model
+        torch.save(state, "models/current_model.pth")
         
         return {"status": "success", "model_loaded": model_filename}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+
+
+
+
 
 # === SECTION 3 : VISUALISATION ===
 
@@ -300,8 +331,15 @@ async def get_latent_space():
         labels = data['labels'] if 'labels' in data else np.zeros(len(data['data']))
         
         input_dim = dataset.shape[1]
-        model = SimpleAutoencoder(input_dim=input_dim, encoding_dim=8)
-        model.load_state_dict(torch.load("models/current_model.pth"))
+        state = torch.load('models/current_model.pth')
+        encoding_dim = None
+        if isinstance(state, dict):
+            if 'encoder.2.weight' in state:
+                encoding_dim = state['encoder.2.weight'].shape[0]
+        if encoding_dim is None:
+            encoding_dim = 8
+        model = SimpleAutoencoder(input_dim=input_dim, encoding_dim=encoding_dim)
+        model.load_state_dict(state)
         model.eval()
         
         # Calculer le latent space
@@ -330,6 +368,8 @@ async def get_latent_space():
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+
 
 @app.post("/reset-training")
 async def reset_training():
@@ -342,6 +382,8 @@ async def reset_training():
         "loss_data": []
     })
     return {"status": "Training reset"}
+
+
 
 @app.get("/")
 async def root():
