@@ -20,7 +20,13 @@ import torch
 import torch.nn as nn
 import umap
 
+### Package in backend/src
+from src.autoencoder_for_labelling.models.autoencoder import SimpleAutoencoder
+from src.autoencoder_for_labelling.data.dataset import generate_synthetic_data
+from src.autoencoder_for_labelling.training.trainer import train_autoencoder
 
+
+# === GLOBAL SETUP ===
 
 app = FastAPI()
 
@@ -35,27 +41,7 @@ os.makedirs("data/uploaded", exist_ok=True)
 os.makedirs("data/synthetic", exist_ok=True)
 os.makedirs("models/saved", exist_ok=True)
 
-# Autoencoder
-class SimpleAutoencoder(nn.Module):
-    def __init__(self, input_dim=20, encoding_dim=8):
-        super(SimpleAutoencoder, self).__init__()
-        self.encoder = nn.Sequential(
-            nn.Linear(input_dim, 16),
-            nn.ReLU(),
-            nn.Linear(16, encoding_dim),
-            nn.ReLU()
-        )
-        self.decoder = nn.Sequential(
-            nn.Linear(encoding_dim, 16),
-            nn.ReLU(),
-            nn.Linear(16, input_dim),
-            nn.Sigmoid()
-        )
-    
-    def forward(self, x):
-        return self.decoder(self.encoder(x))
-
-# État global
+# Global state
 training_metrics = {
     "is_training": False,
     "current_epoch": 0,
@@ -66,11 +52,15 @@ training_metrics = {
     "loss_data": []
 }
 
-# === SECTION 1 : GESTION DES DONNÉES ===
+
+
+
+
+# === SECTION 1 : DATA ===
 
 @app.get("/data-options")
 async def get_data_options():
-    """Retourne les options de données disponibles"""
+    """Give available data options"""
     uploaded_files = os.listdir("data/uploaded")
     synthetic_files = os.listdir("data/synthetic")
     
@@ -79,30 +69,24 @@ async def get_data_options():
         "synthetic_files": synthetic_files
     }
 
+
+
+
 @app.post("/create-synthetic-data")
 async def create_synthetic_data(n_samples: int = 1000, input_dim: int = 20, n_anomalies: int = 50):
     """Crée des données synthétiques"""
     try:
-        # Données normales
-        normal_data = np.random.normal(0, 1, (n_samples - n_anomalies, input_dim))
-        anomaly_data = np.random.normal(5, 2, (n_anomalies, input_dim))
-        all_data = np.vstack([normal_data, anomaly_data])
-        
-        # Normalisation
-        min_val = np.min(all_data, axis=0)
-        max_val = np.max(all_data, axis=0)
-        all_data = (all_data - min_val) / (max_val - min_val)
-        
-        # Labels (0 = normal, 1 = anomalie)
+        # Use the package helper to generate synthetic data (returns torch tensors)
+        train_tensor, _ = generate_synthetic_data(n_samples=n_samples, input_dim=input_dim, n_anomalies=n_anomalies)
+        # convert to numpy for saving and for the frontend expectations
+        all_data = train_tensor.numpy()
         labels = np.zeros(n_samples)
         labels[-n_anomalies:] = 1
-        
-        # Sauvegarde
+
         filename = f"synthetic_data_{n_samples}_{input_dim}.npz"
         filepath = f"data/synthetic/{filename}"
-        
         np.savez(filepath, data=all_data, labels=labels)
-        
+
         return {
             "status": "success",
             "filename": filename,
@@ -111,6 +95,9 @@ async def create_synthetic_data(n_samples: int = 1000, input_dim: int = 20, n_an
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+
 
 @app.post("/upload-data")
 async def upload_data(file: UploadFile = File(...)):
@@ -143,6 +130,9 @@ async def upload_data(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+
+
 @app.get("/current-dataset")
 async def get_current_dataset():
     """Retourne le dataset actuellement chargé"""
@@ -157,6 +147,10 @@ async def get_current_dataset():
         return {"loaded": False}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
 
 @app.post("/load-dataset")
 async def load_dataset(filename: str, data_type: str = "synthetic"):
@@ -192,6 +186,12 @@ async def load_dataset(filename: str, data_type: str = "synthetic"):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+
+
+
+
+
 # === SECTION 2 : ENTRAÎNEMENT ===
 
 @app.get("/model-options")
@@ -199,6 +199,9 @@ async def get_model_options():
     """Retourne les modèles sauvegardés"""
     saved_models = os.listdir("models/saved")
     return {"saved_models": saved_models}
+
+
+
 
 @app.post("/start-training")
 async def start_training(epochs: int = 100, learning_rate: float = 0.001, encoding_dim: int = 8):
@@ -228,43 +231,45 @@ async def start_training(epochs: int = 100, learning_rate: float = 0.001, encodi
     
     return {"status": "Training started", "total_epochs": epochs}
 
+
+
+
 async def run_training(train_data, epochs, learning_rate, encoding_dim):
     try:
         input_dim = train_data.shape[1]
         model = SimpleAutoencoder(input_dim=input_dim, encoding_dim=encoding_dim)
-        criterion = nn.MSELoss()
-        optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-        
+
         for epoch in range(1, epochs + 1):
-            model.train()
-            optimizer.zero_grad()
-            
-            outputs = model(train_data)
-            loss = criterion(outputs, train_data)
-            loss.backward()
-            optimizer.step()
-            
-            # Stocker les données
+            # Use the package trainer helper for a single epoch
+            loss = train_autoencoder(model, train_data, epoch, learning_rate, verbose=False)
+
+            # Store metrics
             training_metrics["current_epoch"] = epoch
-            training_metrics["current_loss"] = loss.item()
-            training_metrics["loss_history"].append(loss.item())
+            training_metrics["current_loss"] = float(loss)
+            training_metrics["loss_history"].append(float(loss))
             training_metrics["epochs_data"].append(epoch)
-            training_metrics["loss_data"].append(float(loss.item()))
-            
-            await asyncio.sleep(0.05)  # Plus rapide pour la démo
-            
-        # Sauvegarder le modèle
+            training_metrics["loss_data"].append(float(loss))
+
+            await asyncio.sleep(0.05)
+
+        # Save the trained model state dict
         model_path = f"models/saved/model_epochs_{epochs}_dim_{encoding_dim}.pth"
         torch.save(model.state_dict(), model_path)
+        # also save as current model for visualization
+        torch.save(model.state_dict(), "models/current_model.pth")
         
     except Exception as e:
         print(f"Training error: {e}")
     finally:
         training_metrics["is_training"] = False
 
+
+
 @app.get("/training-status")
 async def get_training_status():
     return training_metrics
+
+
 
 @app.post("/load-model")
 async def load_model(model_filename: str):
@@ -371,6 +376,9 @@ async def get_latent_space():
     
 
 
+
+
+
 @app.post("/reset-training")
 async def reset_training():
     training_metrics.update({
@@ -382,6 +390,9 @@ async def reset_training():
         "loss_data": []
     })
     return {"status": "Training reset"}
+
+
+
 
 
 
