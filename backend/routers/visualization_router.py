@@ -20,7 +20,26 @@ async def get_latent_space():
         
         data = np.load("data/current_dataset.npz")
         dataset = torch.FloatTensor(data['data'])
-        labels = data['labels'] if 'labels' in data else np.zeros(len(data['data']))
+        # prefer labels saved in results/ if present
+        labels = None
+        results_dir = 'results'
+        if os.path.exists(results_dir):
+            files = [os.path.join(results_dir, f) for f in os.listdir(results_dir) if f.startswith('labels_') and f.endswith('.json')]
+            if files:
+                latest = max(files, key=os.path.getmtime)
+                try:
+                    import json
+                    with open(latest, 'r') as fh:
+                        payload = json.load(fh)
+                        # support new format with 'label'+'index' or older 'labels'
+                        if 'label' in payload and len(payload['label']) == dataset.shape[0]:
+                            labels = np.array(payload['label'])
+                        elif 'labels' in payload and len(payload['labels']) == dataset.shape[0]:
+                            labels = np.array(payload['labels'])
+                except Exception:
+                    labels = None
+        if labels is None:
+            labels = data['labels'] if 'labels' in data else np.zeros(len(data['data']))
         
         input_dim = dataset.shape[1]
         state = torch.load('models/current_model.pth')

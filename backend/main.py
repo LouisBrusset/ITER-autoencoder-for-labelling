@@ -11,7 +11,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import data_router, checking_router, training_router, visualization_router
+from routers import data_router, checking_router, training_router, visualization_router, labels_router
 
 
 # === GLOBAL SETUP ===
@@ -28,11 +28,13 @@ app.add_middleware(
 os.makedirs("data/uploaded", exist_ok=True)
 os.makedirs("data/synthetic", exist_ok=True)
 os.makedirs("models/saved", exist_ok=True)
+os.makedirs("../results", exist_ok=True)
 
 app.include_router(data_router.router)
 app.include_router(checking_router.router)
 app.include_router(training_router.router)
 app.include_router(visualization_router.router)
+app.include_router(labels_router.router)
 
 
 @app.get("/")

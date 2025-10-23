@@ -194,6 +194,8 @@
             <div class="card">
                 <h3>2D Projection (select to label)</h3>
                 <button onclick="generateClassificationLatentSpace()" class="btn-primary">Load projection</button>
+                <button onclick="applyClassificationColors()" class="btn-secondary" id="applyLabelsBtn" disabled>Apply new labels</button>
+                <button onclick="saveLabels()" class="btn-success" id="saveLabelsBtn" disabled>Save labels</button>
                 <div id="classificationContainer" style="position:relative; height:600px; width:100%;">
                     <canvas id="classificationChart"></canvas>
                     <!-- overlay canvas for drawing selection polygon -->

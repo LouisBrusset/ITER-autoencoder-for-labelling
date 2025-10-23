@@ -32,17 +32,50 @@ window.generateLatentSpace = async function() {
     try {
         const response = await fetch(`${API_BASE}/latent-space`);
         const data = await response.json();
-        
-        const normalPoints = data.points.filter(p => p.label === 0);
-        const anomalyPoints = data.points.filter(p => p.label === 1);
-        
-        latentSpaceChart.data.datasets[0].data = normalPoints;
-        latentSpaceChart.data.datasets[1].data = anomalyPoints;
+        // Group points dynamically by label so we can support an unknown number of labels
+        const groups = {};
+        data.points.forEach(p => {
+            const lab = (typeof p.label === 'undefined' || p.label === null) ? 0 : String(p.label);
+            if (!groups[lab]) groups[lab] = [];
+            groups[lab].push(p);
+        });
+
+        // color palette and map (generate extra colors when needed)
+        const palette = [
+            'rgba(54,162,235,0.8)','rgba(255,99,132,0.8)','rgba(75,192,192,0.8)','rgba(255,205,86,0.8)',
+            'rgba(153,102,255,0.8)','rgba(201,203,207,0.8)','rgba(255,159,64,0.8)','rgba(99,255,132,0.8)',
+            'rgba(132,99,255,0.8)','rgba(255,99,245,0.8)','rgba(255,159,199,0.8)','rgba(99,132,255,0.8)'
+        ];
+        const colorMap = {};
+        let pi = 0;
+        const datasets = [];
+        Object.keys(groups).sort((a,b)=>parseInt(a)-parseInt(b)).forEach(key => {
+            let color;
+            if (pi < palette.length) { color = palette[pi]; }
+            else {
+                // generate a new color using HSL to avoid repeats
+                const hue = (pi * 47) % 360;
+                color = `hsla(${hue},70%,50%,0.8)`;
+            }
+            colorMap[key] = color;
+            datasets.push({ label: `Label ${key} (n=${groups[key].length})`, data: groups[key], backgroundColor: color, borderColor: color, pointRadius: 4 });
+            pi++;
+        });
+
+        latentSpaceChart.data.datasets = datasets;
         latentSpaceChart.update();
 
-        // we no longer store full latent vectors client-side; show summary info
-        document.getElementById('pointInfo').innerHTML =
-            `${data.points.length} points projected (${anomalyPoints.length} anomalies detected)`;
+        // Build a compact HTML summary with colored badges and counts
+        const total = data.points.length;
+        const parts = Object.keys(groups).sort((a,b)=>parseInt(a)-parseInt(b)).map(k => {
+            const c = colorMap[k] || 'rgba(128,128,128,0.6)';
+            return `<span style="display:inline-flex;align-items:center;padding:4px 8px;margin-right:8px;border-radius:12px;background:#f6f6f6;border:1px solid #eee;">
+                <span style=\"width:12px;height:12px;background:${c};display:inline-block;margin-right:8px;border-radius:2px;\"></span>
+                <strong style=\"margin-right:6px;\">Label ${k}</strong>
+                <span style=\"font-size:12px;opacity:0.85;\">(n=${groups[k].length})</span>
+            </span>`;
+        });
+        document.getElementById('pointInfo').innerHTML = `<div style="margin-bottom:6px;"><strong>Total:</strong> ${total}</div><div style="display:flex;flex-wrap:wrap;gap:6px;">${parts.join('')}</div>`;
 
         // attach mousemove listener to show dynamic coordinates and nearest sample
         const canvas = document.getElementById('latentSpaceChart');
