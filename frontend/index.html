@@ -15,8 +15,9 @@
             <h1>Autoencoder - Anomaly Detection</h1>
             <nav class="navigation">
                 <a href="#section-data" class="nav-link active">1. Data</a>
-                <a href="#section-training" class="nav-link">2. Training</a>
-                <a href="#section-visualization" class="nav-link">3. Visualization</a>
+                <a href="#section-checking" class="nav-link">2. Checking</a>
+                <a href="#section-training" class="nav-link">3. Training</a>
+                <a href="#section-visualization" class="nav-link">4. Visualization</a>
             </nav>
         </header>
 
@@ -57,7 +58,34 @@
             </div>
         </section>
 
-        <!-- SECTION 2 : TRAINING -->
+        <!-- SECTION 2 : CHECKING -->
+        <section id="section-checking" class="section">
+            <h2>2. Data checking</h2>
+
+            <div class="card">
+                <h3>Dataset Information</h3>
+                <div id="checkingDatasetStatus" class="status-info">No dataset loaded</div>
+            </div>
+
+            <div class="card">
+                <h3>Sample selector</h3>
+                <div class="form-group">
+                    <label>Sample index (0-based):</label>
+                    <input type="number" id="checkSampleIndex" value="0" min="0">
+                </div>
+                <button onclick="showSamplePlot(document.getElementById('checkSampleIndex').value)" class="btn-primary">Show sample</button>
+                <button onclick="showRandomSample()" class="btn-secondary">Random sample</button>
+            </div>
+
+            <div class="card">
+                <h3>Sample visualization</h3>
+                <div id="checkPlotContainer" style="text-align:center;">
+                    <img id="checkPlot" src="" alt="Sample plot will appear here" style="max-width:100%; height:auto;"/>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 3 : TRAINING -->
         <section id="section-training" class="section">
             <h2>2. Training the Model</h2>
 
@@ -137,13 +165,14 @@
                 <div id="pointInfo" class="point-info">
                     Hover over the points to see details.
                 </div>
-                <!-- Reconstruction plot: shows original vs reconstruction for clicked sample -->
                 <div class="card">
                     <h4>Sample reconstruction</h4>
                     <div style="position: relative; height:300px; width:100%;">
                         <canvas id="reconstructionChart"></canvas>
                     </div>
-                    <div id="reconInfo" class="point-info">Click a point in the latent space to see its reconstruction.</div>
+                    <div id="reconInfo" class="point-info">
+                        Click a point in the latent space to see its reconstruction.
+                    </div>
                 </div>
             </div>
         </section>
@@ -177,6 +206,8 @@
         document.addEventListener('DOMContentLoaded', function() {
             loadDataOptions();
             checkCurrentDataset();
+            // update checking dataset status
+            updateCheckingDatasetStatus();
             loadModelOptions();
             checkCurrentModel();
             initTrainingChart();
@@ -330,7 +361,74 @@
             }
         }
         
-        // === FUNCTIONS SECTION 2 : TRAINING ===
+
+
+        // === FUNCTIONS SECTION 2 : CHECKING ===
+
+        async function updateCheckingDatasetStatus() {
+            try {
+                const resp = await fetch(`${API_BASE}/current-dataset`);
+                const info = await resp.json();
+                const el = document.getElementById('checkingDatasetStatus');
+                if (info.loaded) {
+                    el.innerHTML = `<div class="success">Dataset loaded: ${info.filename} (${info.shape[0]} samples, ${info.shape[1]} features)</div>`;
+                    document.getElementById('checkSampleIndex').max = info.shape[0] - 1;
+                } else {
+                    el.innerHTML = `<div class="warning">No dataset loaded</div>`;
+                }
+            } catch (err) {
+                console.error('Error checking dataset for checking tab', err);
+                const el = document.getElementById('checkingDatasetStatus');
+                if (el) el.innerHTML = `<div class="error">Error checking dataset</div>`;
+            }
+        }
+
+        async function showRandomSample() {
+            try {
+                const resp = await fetch(`${API_BASE}/current-dataset`);
+                const info = await resp.json();
+                if (!info.loaded) {
+                    alert('No dataset loaded');
+                    return;
+                }
+                const max = info.shape[0] - 1;
+                const idx = Math.floor(Math.random() * (max + 1));
+                document.getElementById('checkSampleIndex').value = idx;
+                await showSamplePlot(idx);
+            } catch (err) {
+                console.error('Error selecting random sample', err);
+            }
+        }
+
+        async function showSamplePlot(index) {
+            try {
+                const idx = parseInt(index);
+                if (isNaN(idx)) {
+                    alert('Invalid index');
+                    return;
+                }
+
+                const resp = await fetch(`${API_BASE}/check-sample-plot?index=${idx}`);
+                if (!resp.ok) {
+                    const err = await resp.json().catch(() => ({}));
+                    alert(`Error: ${err.detail || resp.statusText}`);
+                    return;
+                }
+
+                const blob = await resp.blob();
+                const url = URL.createObjectURL(blob);
+                const img = document.getElementById('checkPlot');
+                img.src = url;
+                img.onload = () => { URL.revokeObjectURL(url); };
+            } catch (err) {
+                console.error('Error fetching sample plot', err);
+                alert('Error fetching sample plot');
+            }
+        }
+
+
+
+        // === FUNCTIONS SECTION 3 : TRAINING ===
 
         function initTrainingChart() {
             const ctx = document.getElementById('trainingChart').getContext('2d');
@@ -518,7 +616,7 @@
 
 
 
-        // === FUNCTIONS SECTION 3 : VISUALIZATION ===
+        // === FUNCTIONS SECTION 4 : VISUALIZATION ===
 
         function initLatentSpaceChart() {
             const ctx = document.getElementById('latentSpaceChart').getContext('2d');

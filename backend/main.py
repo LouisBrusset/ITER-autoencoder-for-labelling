@@ -18,6 +18,7 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import Response
 
 # Data analysis imports
 import numpy as np
@@ -28,6 +29,10 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import umap
+import io
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
 ### Package in backend/src
 from src.autoencoder_for_labelling.models.autoencoder import SimpleAutoencoder
@@ -239,10 +244,50 @@ async def upload_data(file: UploadFile = File(...)):
 
 
 
+# === SECTION 2 : CHECKING ===
+
+@app.get('/check-sample-plot')
+async def check_sample_plot(index: int = 0):
+    """Return a PNG image plotting original for a dataset sample index."""
+    try:
+        # Ensure dataset exists
+        if not os.path.exists('data/current_dataset.npz'):
+            raise HTTPException(status_code=400, detail='No dataset loaded')
+
+        data = np.load('data/current_dataset.npz', allow_pickle=True)
+        X = data['data']
+        n = X.shape[0]
+        if index < 0 or index >= n:
+            raise HTTPException(status_code=400, detail=f'Index out of range (0..{n-1})')
+
+        sample = torch.FloatTensor(X[index:index+1])
+        orig = X[index]
+
+        # Plot using matplotlib
+        fig, ax = plt.subplots(figsize=(8,3))
+        ax.plot(orig, label='Original', color='tab:blue')
+        ax.set_xlabel('Feature index')
+        ax.set_ylabel('Value')
+        title = f'Sample {index} - Original'
+        ax.set_title(title)
+        ax.legend()
+        fig.tight_layout()
+
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png')
+        plt.close(fig)
+        buf.seek(0)
+
+        return Response(content=buf.read(), media_type='image/png')
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
 
 
-
-# === SECTION 2 : ENTRAÎNEMENT ===
+# === SECTION 3 : TRAINING ===
 
 @app.get("/model-options")
 async def get_model_options():
@@ -338,7 +383,6 @@ async def get_current_model():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @app.post("/start-training")
 async def start_training(epochs: int = 100, learning_rate: float = 0.001, encoding_dim: int = 8):
@@ -463,7 +507,7 @@ async def reset_training():
 
 
 
-# === SECTION 3 : VISUALISATION ===
+# === SECTION 4 : VISUALISATION ===
 
 @app.get("/latent-space")
 async def get_latent_space():
