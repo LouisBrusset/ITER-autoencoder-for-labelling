@@ -18,6 +18,7 @@
                 <a href="#section-checking" class="nav-link">2. Checking</a>
                 <a href="#section-training" class="nav-link">3. Training</a>
                 <a href="#section-visualization" class="nav-link">4. Visualization</a>
+                <a href="#section-classification" class="nav-link">5. Classification</a>
             </nav>
         </header>
 
@@ -176,6 +177,32 @@
                 </div>
             </div>
         </section>
+
+        <!-- SECTION 5 : CLASSIFICATION -->
+        <section id="section-classification" class="section">
+            <h2>5. Classification</h2>
+
+            <div class="card">
+                <h3>Dataset Information</h3>
+                <div id="classificationDatasetInfo" class="status-info">No dataset loaded for classification</div>
+            </div>
+
+            <div class="card">
+                <h3>Model Information</h3>
+                <div id="classificationModelInfo" class="status-info">No model loaded for classification</div>
+            </div>
+
+            <div class="card">
+                <h3>2D Projection (select to label)</h3>
+                <button onclick="generateClassificationLatentSpace()" class="btn-primary">Load projection</button>
+                <div id="classificationContainer" style="position:relative; height:600px; width:100%;">
+                    <canvas id="classificationChart"></canvas>
+                    <!-- overlay canvas for drawing selection polygon -->
+                    <canvas id="classificationOverlay" style="position:absolute; left:0; top:0; pointer-events:none;"></canvas>
+                </div>
+                <div id="classificationInfo" class="point-info">Drag to draw a polygon to select points.</div>
+            </div>
+        </section>
     </div>
 
 
@@ -199,20 +226,31 @@
                 
                 this.classList.add('active');
                 document.getElementById(targetId).classList.add('active');
+                // if activating classification section, ensure overlay is synced
+                if (targetId === 'section-classification' && classificationChart) {
+                    syncOverlayToChart();
+                }
             });
         });
 
         // Initialization
         document.addEventListener('DOMContentLoaded', function() {
+            // init functions
             loadDataOptions();
             checkCurrentDataset();
-            // update checking dataset status
             updateCheckingDatasetStatus();
             loadModelOptions();
             checkCurrentModel();
             initTrainingChart();
             initLatentSpaceChart();
             initReconstructionChart();
+            // initialize classification overlay elements when DOM ready
+            // actual chart init will happen when user loads projection
+            const overlay = document.getElementById('classificationOverlay');
+            if (overlay) {
+                // size will be set when chart is created
+                overlay.style.pointerEvents = 'auto';
+            }
         });
 
 
@@ -291,27 +329,39 @@
                 const data = await response.json();
                 
                 if (data.loaded) {
+                    document.getElementById('checkingDatasetStatus').innerHTML = 
+                        `<div class="success">Dataset loaded: ${data.filename} (${data.shape[0]} samples, ${data.shape[1]} features)</div>`;
                     document.getElementById('currentDataset').innerHTML = 
                         `<div class="success">Dataset loaded: ${data.filename} (${data.shape[0]} samples, ${data.shape[1]} features)</div>`;
                     document.getElementById('trainingDatasetInfo').innerHTML = 
                         `<div class="success">Ready for training: ${data.filename} (${data.shape[0]} samples, ${data.shape[1]} features)</div>`;
                     document.getElementById('visualizationDatasetInfo').innerHTML = 
                         `<div class="success">Ready for visualization: ${data.filename} (${data.shape[0]} samples, ${data.shape[1]} features)</div>`;
+                    document.getElementById('classificationDatasetInfo').innerHTML = 
+                        `<div class="success">Ready for classification: ${data.filename} (${data.shape[0]} samples, ${data.shape[1]} features)</div>`;
                 } else {
+                    document.getElementById('checkingDatasetStatus').innerHTML = 
+                        '<div class="warning">No dataset loaded</div>';
                     document.getElementById('currentDataset').innerHTML = 
                         '<div class="warning">No dataset loaded</div>';
                     document.getElementById('trainingDatasetInfo').innerHTML = 
                         '<div class="warning">No dataset loaded for training</div>';
                     document.getElementById('visualizationDatasetInfo').innerHTML =
                         '<div class="warning">No dataset loaded for visualization</div>';
+                    document.getElementById('classificationDatasetInfo').innerHTML =
+                        '<div class="warning">No dataset loaded for classification</div>';
                 }
             } catch (error) {
                 console.error('Error:', error);
+                document.getElementById('checkingDatasetStatus').innerHTML = 
+                    '<div class="error">Error checking dataset</div>';
                 document.getElementById('currentDataset').innerHTML = 
                     '<div class="error">Error checking dataset</div>';
                 document.getElementById('trainingDatasetInfo').innerHTML = 
                     '<div class="error">Error checking dataset</div>';
                 document.getElementById('visualizationDatasetInfo').innerHTML =
+                    '<div class="error">Error checking dataset</div>';
+                document.getElementById('classificationDatasetInfo').innerHTML =
                     '<div class="error">Error checking dataset</div>';
             }
         }
@@ -503,23 +553,30 @@
                 const info = await res.json();
                 const currentEl = document.getElementById('currentModelStatus');
                 const vizEl = document.getElementById('visualizationModelInfo');
+                const classEl = document.getElementById('classificationModelInfo');
 
                 if (info.error) {
                     if (currentEl) currentEl.innerHTML = `<div class="error">Error loading model: ${info.error}</div>`;
                     if (vizEl) vizEl.innerHTML = `<div class="error">Error loading model: ${info.error}</div>`;
+                    if (classEl) classEl.innerHTML = `<div class="error">Error loading model: ${info.error}</div>`;
                 } else if (info.loaded) {
                     if (currentEl) currentEl.innerHTML = `<div class="success">Model loaded${info.encoding_dim? (': encoding_dim ' + info.encoding_dim) : ''}${info.input_dim? (', input_dim ' + info.input_dim) : ''}</div>`;
                     if (vizEl) vizEl.innerHTML = `<div class="success">Ready for visualization:${info.encoding_dim? (': encoding_dim ' + info.encoding_dim) : ''}</div>`;
+                    if (classEl) classEl.innerHTML = `<div class="success">Ready for classification:${info.encoding_dim? (': encoding_dim ' + info.encoding_dim) : ''}</div>`;
                 } else {
                     if (currentEl) currentEl.innerHTML = '<div class="warning">No model loaded</div>';
                     if (vizEl) vizEl.innerHTML = '<div class="warning">No model loaded for visualization</div>';
+                    if (classEl) classEl.innerHTML = '<div class="warning">No model loaded for classification</div>';
                 }
+
             } catch (error) {
                 console.error('Error:', error);
                 const currentEl = document.getElementById('currentModelStatus');
                 const vizEl = document.getElementById('visualizationModelInfo');
+                const classEl = document.getElementById('classificationModelInfo');
                 if (currentEl) currentEl.innerHTML = '<div class="error">Error checking model</div>';
                 if (vizEl) vizEl.innerHTML = '<div class="error">Error checking model</div>';
+                if (classEl) classEl.innerHTML = '<div class="error">Error checking model</div>';
             }
         }
 
@@ -812,6 +869,128 @@
                 console.error('Error:', error);
                 alert('Error generating latent space');
             }
+        }
+
+
+
+        // === FUNCTIONS SECTION 5 : CLASSIFICATION ===
+
+        let classificationChart = null;
+        let classificationData = null;
+        let overlayCanvas = null;
+        let overlayCtx = null;
+        let isDrawing = false;
+        let polygon = [];
+
+        function initClassificationChart() {
+            const ctx = document.getElementById('classificationChart').getContext('2d');
+            classificationChart = new Chart(ctx, {
+                type: 'scatter',
+                data: { datasets: [{ label: 'Points', data: [], pointRadius: 4 }] },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: { x: { title: { display: true, text: 'UMAP 1' } }, y: { title: { display: true, text: 'UMAP 2' } } },
+                    plugins: { tooltip: { callbacks: { label: function(context){ const p = context.raw; return `Index: ${p.original_index}, Label: ${p.label}`; } } } }
+                }
+            });
+
+            // setup overlay (position and size will be synced)
+            overlayCanvas = document.getElementById('classificationOverlay');
+            overlayCanvas.style.pointerEvents = 'auto';
+            overlayCtx = overlayCanvas.getContext('2d');
+            // initial sync (handles DPR and CSS sizing)
+            syncOverlayToChart();
+            // keep overlay in sync on window resize
+            window.addEventListener('resize', () => { if (classificationChart) syncOverlayToChart(); });
+
+            // enable drawing
+            overlayCanvas.addEventListener('mousedown', (e)=>{
+                e.preventDefault();
+                isDrawing = true; polygon = [];
+                const r = overlayCanvas.getBoundingClientRect();
+                const dpr = window.devicePixelRatio || 1;
+                const x = (e.clientX - r.left) * (overlayCanvas.width / (r.width * dpr));
+                const y = (e.clientY - r.top) * (overlayCanvas.height / (r.height * dpr));
+                polygon.push([x,y]); overlayCtx.clearRect(0,0,overlayCanvas.width, overlayCanvas.height);
+                overlayCtx.beginPath(); overlayCtx.moveTo(x,y);
+            });
+            overlayCanvas.addEventListener('mousemove', (e)=>{
+                if(!isDrawing) return; e.preventDefault(); const r = overlayCanvas.getBoundingClientRect(); const dpr = window.devicePixelRatio || 1; const x = (e.clientX - r.left) * (overlayCanvas.width / (r.width * dpr)); const y = (e.clientY - r.top) * (overlayCanvas.height / (r.height * dpr)); polygon.push([x,y]); overlayCtx.lineTo(x,y); overlayCtx.strokeStyle='rgba(0,0,0,0.6)'; overlayCtx.lineWidth=2; overlayCtx.stroke();
+            });
+            overlayCanvas.addEventListener('mouseup', async (e)=>{
+                if(!isDrawing) return; isDrawing=false; overlayCtx.closePath();
+                // compute selected points
+                const selected = [];
+                const xScale = classificationChart.scales['x']; const yScale = classificationChart.scales['y'];
+                if(!xScale || !yScale) return;
+                // convert polygon points from overlay pixel space back to chart pixel space (accounting for DPR)
+                const r = overlayCanvas.getBoundingClientRect();
+                const dpr = window.devicePixelRatio || 1;
+                const polyPixels = polygon.map(pt => {
+                    const px = pt[0] * (r.width * dpr) / overlayCanvas.width + r.left * dpr;
+                    const py = pt[1] * (r.height * dpr) / overlayCanvas.height + r.top * dpr;
+                    return [px/dpr - r.left, py/dpr - r.top];
+                });
+                for(let i=0;i<classificationData.points.length;i++){
+                    const p = classificationData.points[i];
+                    const px = xScale.getPixelForValue(p.x); const py = yScale.getPixelForValue(p.y);
+                    if(pointInPolygon([px,py], polyPixels)) selected.push(i);
+                }
+                if(selected.length===0){ document.getElementById('classificationInfo').textContent='No points selected.'; return; }
+                const newLabel = prompt(`Assign new integer label to ${selected.length} selected points:`, '1');
+                if(newLabel===null){ document.getElementById('classificationInfo').textContent='Selection cancelled.'; return; }
+                const lab = parseInt(newLabel); if(isNaN(lab)){ alert('Label must be integer'); return; }
+                selected.forEach(idx => classificationData.points[idx].label = lab);
+                renderClassificationPoints();
+                document.getElementById('classificationInfo').textContent = `Assigned label ${lab} to ${selected.length} points.`;
+                // clear overlay after selection
+                setTimeout(()=>{ overlayCtx.clearRect(0,0,overlayCanvas.width, overlayCanvas.height); }, 500);
+            });
+        }
+
+        function pointInPolygon(point, vs){
+            const x = point[0], y = point[1]; let inside=false; for(let i=0,j=vs.length-1;i<vs.length;j=i++){
+                const xi=vs[i][0], yi=vs[i][1], xj=vs[j][0], yj=vs[j][1]; const intersect = ((yi>y)!=(yj>y)) && (x < (xj-xi)*(y-yi)/(yj-yi)+xi); if(intersect) inside=!inside;
+            } return inside;
+        }
+
+        // synchronize overlay canvas size and transform with the Chart.js canvas
+        function syncOverlayToChart(){
+            if(!classificationChart || !overlayCanvas) return;
+            const chartCanvas = classificationChart.canvas;
+            const chartRect = chartCanvas.getBoundingClientRect();
+            // set CSS size to match chart drawing area
+            overlayCanvas.style.left = chartCanvas.offsetLeft + 'px';
+            overlayCanvas.style.top = chartCanvas.offsetTop + 'px';
+            overlayCanvas.style.width = chartRect.width + 'px';
+            overlayCanvas.style.height = chartRect.height + 'px';
+            // adjust for devicePixelRatio for crisp drawing
+            const dpr = window.devicePixelRatio || 1;
+            overlayCanvas.width = Math.round(chartRect.width * dpr);
+            overlayCanvas.height = Math.round(chartRect.height * dpr);
+            overlayCtx = overlayCanvas.getContext('2d');
+            overlayCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            overlayCtx.clearRect(0,0,overlayCanvas.width, overlayCanvas.height);
+            // ensure pointer events enabled
+            overlayCanvas.style.pointerEvents = 'auto';
+        }
+
+        async function generateClassificationLatentSpace(){
+            try{
+                const resp = await fetch(`${API_BASE}/latent-space`);
+                const data = await resp.json();
+                classificationData = { points: data.points.map(p=>({x:p.x,y:p.y,label:p.label,original_index:p.original_index})), latent_vectors: data.latent_vectors };
+                initClassificationChart(); renderClassificationPoints();
+                document.getElementById('classificationDatasetInfo').innerHTML = document.getElementById('visualizationDatasetInfo').innerHTML;
+                document.getElementById('classificationModelInfo').innerHTML = document.getElementById('visualizationModelInfo').innerHTML;
+            }catch(err){ console.error(err); alert('Error loading classification latent space'); }
+        }
+
+        function renderClassificationPoints(){
+            if(!classificationChart || !classificationData) return; const palette=['rgba(54,162,235,0.8)','rgba(255,99,132,0.8)','rgba(75,192,192,0.8)','rgba(255,205,86,0.8)','rgba(153,102,255,0.8)','rgba(201,203,207,0.8)']; const colorMap={}; let mapCount=0;
+            const ds = classificationData.points.map(p=>{ const lab = p.label||0; if(!(lab in colorMap)){ colorMap[lab]=palette[mapCount%palette.length]; mapCount++; } return {x:p.x,y:p.y,original_index:p.original_index,label:lab, backgroundColor: colorMap[lab]}; });
+            classificationChart.data.datasets[0].data = ds; classificationChart.update();
         }
     </script>
 </body>

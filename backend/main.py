@@ -413,7 +413,7 @@ async def start_training(epochs: int = 100, learning_rate: float = 0.001, encodi
     return {"status": "Training started", "total_epochs": epochs}
 
 
-async def run_training(train_data, epochs, learning_rate, encoding_dim):
+async def run_training(train_data, epochs, learning_rate, encoding_dim, verbose=False):
     try:
         input_dim = train_data.shape[1]
         model = SimpleAutoencoder(input_dim=input_dim, encoding_dim=encoding_dim)
