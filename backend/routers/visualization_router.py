@@ -51,10 +51,9 @@ async def get_latent_space():
             })
         
         return {
-            "points": points, 
-            "latent_dim": int(latent_representations.shape[1]), 
-            "original_dim": int(dataset.shape[1]), 
-            "latent_vectors": latent_representations.tolist()
+            "points": points,
+            "latent_dim": int(latent_representations.shape[1]),
+            "original_dim": int(dataset.shape[1])
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

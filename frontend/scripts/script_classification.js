@@ -93,7 +93,7 @@ window.generateClassificationLatentSpace = async function(){
     try{
         const resp = await fetch(`${API_BASE}/latent-space`);
         const data = await resp.json();
-        classificationData = { points: data.points.map(p=>({x:p.x,y:p.y,label:p.label,original_index:p.original_index})), latent_vectors: data.latent_vectors };
+    classificationData = { points: data.points.map(p=>({x:p.x,y:p.y,label:p.label,original_index:p.original_index})) };
         initClassificationChart(); renderClassificationPoints();
         document.getElementById('classificationDatasetInfo').innerHTML = document.getElementById('visualizationDatasetInfo').innerHTML;
         document.getElementById('classificationModelInfo').innerHTML = document.getElementById('visualizationModelInfo').innerHTML;

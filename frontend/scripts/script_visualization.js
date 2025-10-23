@@ -40,9 +40,7 @@ window.generateLatentSpace = async function() {
         latentSpaceChart.data.datasets[1].data = anomalyPoints;
         latentSpaceChart.update();
 
-        // store latent vectors for hover interactions
-        window._latent_vectors = data.latent_vectors || [];
-
+        // we no longer store full latent vectors client-side; show summary info
         document.getElementById('pointInfo').innerHTML =
             `${data.points.length} points projected (${anomalyPoints.length} anomalies detected)`;
 
@@ -64,29 +62,22 @@ window.generateLatentSpace = async function() {
             const px = xScale.getValueForPixel(x);
             const py = yScale.getValueForPixel(y);
 
-            // find nearest latent vector in original latent space (not UMAP)
+            // find nearest in projected (UMAP) space and show nearest sample index
             let nearestIdx = -1;
-            let nearestDist = Infinity;
-            if (window._latent_vectors && window._latent_vectors.length) {
-                // we need to find the inverse mapping from UMAP to latent - not trivial.
-                // instead, we find nearest in UMAP projection space using original projected points (data.points)
-                const allPoints = data.points;
-                for (let i = 0; i < allPoints.length; i++) {
-                    const dx = allPoints[i].x - px;
-                    const dy = allPoints[i].y - py;
-                    const d = dx*dx + dy*dy;
-                    if (d < nearestDist) {
-                        nearestDist = d;
-                        nearestIdx = allPoints[i].original_index;
-                    }
+            let nearestDistSq = Infinity;
+            const allPoints = data.points || [];
+            for (let i = 0; i < allPoints.length; i++) {
+                const dx = allPoints[i].x - px;
+                const dy = allPoints[i].y - py;
+                const dSq = dx*dx + dy*dy;
+                if (dSq < nearestDistSq) {
+                    nearestDistSq = dSq;
+                    nearestIdx = allPoints[i].original_index;
                 }
             }
 
-            const latentVec = (window._latent_vectors && nearestIdx >= 0) ? window._latent_vectors[nearestIdx] : null;
-
             document.getElementById('pointInfo').innerHTML = 
                 `UMAP: (${px.toFixed(3)}, ${py.toFixed(3)})` +
-                (latentVec ? ` | Latent: [${latentVec.map(v => v.toFixed(4)).slice(0,8).join(', ')}${latentVec.length>8? ', ...':''}]` : '') +
                 (nearestIdx>=0 ? ` | Nearest sample: ${nearestIdx}` : '');
         };
 
@@ -97,41 +88,43 @@ window.generateLatentSpace = async function() {
                 const x = evt.clientX - rect.left;
                 const y = evt.clientY - rect.top;
 
+
                 const xScale = latentSpaceChart.scales['x'];
                 const yScale = latentSpaceChart.scales['y'];
                 if (!xScale || !yScale) return;
 
-                const px = xScale.getPixelForValue(x);
-                const py = yScale.getPixelForValue(y);
+                // convert the click pixel coordinates into chart (data) coordinates
+                const px = xScale.getValueForPixel(x);
+                const py = yScale.getValueForPixel(y);
 
-                // find nearest in projected space
+                // find nearest in projected (UMAP) space using Euclidean distance
                 let nearestIdx = -1;
-                let nearestDist = Infinity;
+                let nearestDistSq = Infinity;
                 const allPoints = data.points || [];
                 for (let i = 0; i < allPoints.length; i++) {
                     const dx = allPoints[i].x - px;
                     const dy = allPoints[i].y - py;
-                    const d = dx*dx + dy*dy;
-                    if (d < nearestDist) {
-                        nearestDist = d;
+                    const dSq = dx*dx + dy*dy;
+                    if (dSq < nearestDistSq) {
+                        nearestDistSq = dSq;
                         nearestIdx = allPoints[i].original_index;
                     }
                 }
+                const nearestDist = (nearestDistSq === Infinity) ? Infinity : Math.sqrt(nearestDistSq);
 
                 if (nearestIdx < 0) {
                     document.getElementById('reconInfo').textContent = 'No sample found near click';
                     return;
                 }
 
-                // fetch reconstruction
-                const resp = await fetch(`${API_BASE}/reconstruct?index=${nearestIdx}`);
-                if (!resp.ok) {
-                    const err = await resp.json().catch(() => ({}));
-                    document.getElementById('reconInfo').textContent = `Error: ${err.detail || resp.statusText}`;
+                // fetch reconstruction for the selected sample
+                const recResp = await fetch(`${API_BASE}/reconstruct?index=${nearestIdx}`);
+                if (!recResp.ok) {
+                    const err = await recResp.json().catch(() => ({}));
+                    document.getElementById('reconInfo').textContent = `Error: ${err.detail || recResp.statusText}`;
                     return;
                 }
-                const recData = await resp.json();
-
+                const recData = await recResp.json();
                 const original = recData.original || [];
                 const reconstruction = recData.reconstruction || [];
 
@@ -146,7 +139,17 @@ window.generateLatentSpace = async function() {
                 reconstructionChart.data.datasets[1].data = reconstruction;
                 reconstructionChart.update();
 
-                document.getElementById('reconInfo').textContent = `Index: ${recData.index} | Distance (proj): ${nearestDist.toFixed(4)}`;
+                // compute RMSE between original and reconstruction
+                let rmse = NaN;
+                if (Array.isArray(original) && Array.isArray(reconstruction) && original.length === reconstruction.length && original.length > 0) {
+                    let s = 0.0;
+                    for (let i = 0; i < original.length; i++) {
+                        const d = original[i] - reconstruction[i];
+                        s += d * d;
+                    }
+                    rmse = Math.sqrt(s / original.length);
+                }
+                document.getElementById('reconInfo').textContent = `Index: ${recData.index} | RMSE: ${Number.isFinite(rmse) ? rmse.toFixed(4) : 'N/A'}`;
 
             } catch (err) {
                 console.error('Reconstruction error', err);
