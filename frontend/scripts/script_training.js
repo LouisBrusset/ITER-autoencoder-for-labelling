@@ -1,0 +1,193 @@
+(function(){
+const API_BASE = window.API_BASE || "http://localhost:8000";
+window.trainingInterval = null;
+window.trainingChart = null;
+
+window.initTrainingChart = function() {
+    const ctx = document.getElementById('trainingChart').getContext('2d');
+    window.trainingChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Training Loss',
+                data: [],
+                borderColor: 'rgb(75, 192, 192)',
+                backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                borderWidth: 2,
+                pointRadius: 3,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: { x: { title: { display: true, text: 'Epoch' } }, y: { title: { display: true, text: 'Loss' }, beginAtZero: true } }
+        }
+    });
+};
+
+window.loadModelOptions = async function() {
+    try {
+        const response = await fetch(`${API_BASE}/model-options`);
+        const data = await response.json();
+        
+        let html = '';
+        data.saved_models.forEach(model => {
+            html += `<div class="file-item">
+                <input type="radio" name="modelFile" value="${model}">
+                ${model}
+                <button onclick="deleteModel('${model}')" class="btn-small">Delete</button>
+            </div>`;
+        });
+        
+        document.getElementById('modelOptions').innerHTML = html || 'No saved models available.';
+
+    } catch (error) {
+        console.error('Error:', error);
+    }
+};
+
+window.deleteModel = async function(modelFilename) {
+    if (!confirm(`Are you sure you want to delete model ${modelFilename}?`)) {
+        return;
+    }
+    try {
+        const response = await fetch(
+            `${API_BASE}/delete-model?model_filename=${modelFilename}`,
+            { method: 'DELETE' }
+        );
+        const result = await response.json();
+        alert(`Model deleted: ${result.model_filename || modelFilename}`);
+        loadModelOptions();
+        checkCurrentModel();
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error deleting model');
+    }
+};
+
+window.checkCurrentModel = async function() {
+    try {
+        const res = await fetch(`${API_BASE}/current-model`);
+        const info = await res.json();
+        
+        const currentEl = document.getElementById('currentModelStatus');
+        const vizEl = document.getElementById('visualizationModelInfo');
+        const classEl = document.getElementById('classificationModelInfo');
+        if (info.error) {
+            if (currentEl) currentEl.innerHTML = `<div class="error">Error loading model: ${info.error}</div>`;
+            if (vizEl) vizEl.innerHTML = `<div class="error">Error loading model: ${info.error}</div>`;
+            if (classEl) classEl.innerHTML = `<div class="error">Error loading model: ${info.error}</div>`;
+        } else if (info.loaded) {
+            if (currentEl) currentEl.innerHTML = `<div class="success">Model loaded${info.encoding_dim? (': encoding_dim ' + info.encoding_dim) : ''}${info.input_dim? (', input_dim ' + info.input_dim) : ''}</div>`;
+            if (vizEl) vizEl.innerHTML = `<div class="success">Ready for visualization${info.encoding_dim? (': encoding_dim ' + info.encoding_dim) : ''}</div>`;
+            if (classEl) classEl.innerHTML = `<div class="success">Ready for classification${info.encoding_dim? (': encoding_dim ' + info.encoding_dim) : ''}</div>`;
+        } else {
+            if (currentEl) currentEl.innerHTML = '<div class="warning">No model loaded</div>';
+            if (vizEl) vizEl.innerHTML = '<div class="warning">No model loaded for visualization</div>';
+            if (classEl) classEl.innerHTML = '<div class="warning">No model loaded for classification</div>';
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        const currentEl = document.getElementById('currentModelStatus');
+        const vizEl = document.getElementById('visualizationModelInfo');
+        const classEl = document.getElementById('classificationModelInfo');
+        if (currentEl) currentEl.innerHTML = '<div class="error">Error checking model</div>';
+        if (vizEl) vizEl.innerHTML = '<div class="error">Error checking model</div>';
+        if (classEl) classEl.innerHTML = '<div class="error">Error checking model</div>';
+    }
+};
+
+window.startTraining = async function() {
+    const epochs = document.getElementById('trainingEpochs').value;
+    const learningRate = document.getElementById('learningRate').value;
+    const encodingDim = document.getElementById('encodingDim').value;
+    
+    try {
+        const response = await fetch(
+            `${API_BASE}/start-training?epochs=${epochs}&learning_rate=${learningRate}&encoding_dim=${encodingDim}`,
+            { method: 'POST' }
+        );
+        const result = await response.json();
+
+        document.getElementById('statusText').textContent = 'Training in progress...';
+        document.getElementById('totalEpochs').textContent = result.total_epochs;
+        
+        startTrainingMonitoring();
+        
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error starting training');
+    }
+};
+
+window.startTrainingMonitoring = function() {
+    window.trainingInterval = setInterval(window.updateTrainingStatus, 500);
+};
+
+window.updateTrainingStatus = async function() {
+    try {
+        const response = await fetch(`${API_BASE}/training-status`);
+        const data = await response.json();
+        
+        document.getElementById('epochText').textContent = data.current_epoch;
+        document.getElementById('lossText').textContent = data.current_loss.toFixed(4);
+
+        // Update chart
+        if (data.epochs_data && data.loss_data) {
+            trainingChart.data.labels = data.epochs_data;
+            trainingChart.data.datasets[0].data = data.loss_data;
+            trainingChart.update();
+        }
+        
+        if (!data.is_training && data.current_epoch > 0) {
+            document.getElementById('statusText').textContent = 'Training complete';
+            clearInterval(trainingInterval);
+            loadModelOptions(); // Reload model list
+        }
+        
+    } catch (error) {
+        console.error('Error:', error);
+    }
+};
+
+window.resetTraining = async function() {
+    try {
+        await fetch(`${API_BASE}/reset-training`, { method: 'POST' });
+        document.getElementById('statusText').textContent = 'Waiting...';
+        document.getElementById('epochText').textContent = '0';
+        document.getElementById('lossText').textContent = '0.0000';
+        trainingChart.data.labels = [];
+        trainingChart.data.datasets[0].data = [];
+        trainingChart.update();
+        clearInterval(trainingInterval);
+    } catch (error) {
+        console.error('Error:', error);
+    }
+};
+
+window.loadSelectedModel = async function() {
+    const selected = document.querySelector('input[name="modelFile"]:checked');
+    if (!selected) {
+        alert('Please select a model');
+        return;
+    }
+    
+    try {
+        const response = await fetch(
+            `${API_BASE}/load-model?model_filename=${selected.value}`,
+            { method: 'POST' }
+        );
+        const result = await response.json();
+        alert(`Model loaded: ${result.model_loaded}`);
+        // update UI state
+        checkCurrentModel();
+        loadModelOptions();
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error loading model');
+    }
+};
+
+})();
