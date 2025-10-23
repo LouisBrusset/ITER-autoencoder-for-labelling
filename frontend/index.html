@@ -20,12 +20,19 @@
             </nav>
         </header>
 
-        <!-- SECTION 1 : GESTION DES DONNÉES -->
+        <!-- SECTION 1 : DATA -->
         <section id="section-data" class="section active">
             <h2>1. Data loading</h2>
             
             <div class="card">
-                <h3>Create synthetic data</h3>
+                <h3>Upload a file</h3>
+                <input type="file" id="fileUpload" accept=".csv,.npz">
+                <button onclick="uploadData()" class="btn-primary">Upload</button>
+                <div id="uploadStatus"></div>
+            </div>
+            
+            <div class="card">
+                <h3>or create synthetic data</h3>
                 <div class="form-group">
                     <label>Number of samples:</label>
                     <input type="number" id="nSamples" value="1000" min="100" max="10000">
@@ -42,13 +49,6 @@
             </div>
 
             <div class="card">
-                <h3>Or upload a file</h3>
-                <input type="file" id="fileUpload" accept=".csv,.npz">
-                <button onclick="uploadData()" class="btn-secondary">Upload</button>
-                <div id="uploadStatus"></div>
-            </div>
-
-            <div class="card">
                 <h3>Available Data</h3>
                 <div id="dataOptions"></div>
                 <div id="currentDataset" class="status-info">
@@ -57,9 +57,16 @@
             </div>
         </section>
 
-        <!-- SECTION 2 : ENTRAÎNEMENT -->
+        <!-- SECTION 2 : TRAINING -->
         <section id="section-training" class="section">
             <h2>2. Training the Model</h2>
+
+            <div class="card">
+                <h3>Dataset Information</h3>
+                <div id="trainingDatasetInfo" class="status-info">
+                    No dataset loaded for training
+                </div>
+            </div>
             
             <div class="card">
                 <h3>Training Parameters</h3>
@@ -77,13 +84,7 @@
                 </div>
                 <button onclick="startTraining()" class="btn-primary" id="startTrainingBtn">Start Training</button>
             </div>
-
-            <div class="card">
-                <h3>Saved Models</h3>
-                <div id="modelOptions"></div>
-                <button onclick="loadSelectedModel()" class="btn-secondary">Load Selected Model</button>
-            </div>
-
+            
             <div class="card">
                 <h3>Training Progress</h3>
                 <div class="status">
@@ -96,11 +97,36 @@
                 </div>
                 <button onclick="resetTraining()" class="btn-warning">Reset</button>
             </div>
+            
+            <div class="card">
+                <h3>Available Saved Models</h3>
+                <div id="modelOptions"></div>
+                <button onclick="loadSelectedModel()" class="btn-secondary">Load Selected Model</button>
+                <div id="currentModelStatus" class="status-info">
+                    No model loaded
+                </div>
+            </div>
         </section>
 
-        <!-- SECTION 3 : VISUALISATION -->
+
+
+        <!-- SECTION 3 : VISUALIZATION -->
         <section id="section-visualization" class="section">
             <h2>3. Latent Space Visualization</h2>
+
+            <div class="card">
+                <h3>Dataset Information</h3>
+                <div id="visualizationDatasetInfo" class="status-info">
+                    No dataset loaded for visualization
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>Model Information</h3>
+                <div id="visualizationModelInfo" class="status-info">
+                    No model loaded for visualization
+                </div>
+            </div>
             
             <div class="card">
                 <h3>2D Projection of Latent Space</h3>
@@ -110,6 +136,14 @@
                 </div>
                 <div id="pointInfo" class="point-info">
                     Hover over the points to see details.
+                </div>
+                <!-- Reconstruction plot: shows original vs reconstruction for clicked sample -->
+                <div class="card">
+                    <h4>Sample reconstruction</h4>
+                    <div style="position: relative; height:300px; width:100%;">
+                        <canvas id="reconstructionChart"></canvas>
+                    </div>
+                    <div id="reconInfo" class="point-info">Click a point in the latent space to see its reconstruction.</div>
                 </div>
             </div>
         </section>
@@ -122,14 +156,15 @@
         let trainingInterval = null;
         let trainingChart = null;
         let latentSpaceChart = null;
+        let reconstructionChart = null;
 
-        // Navigation entre sections
+        // Navigation between sections
         document.querySelectorAll('.nav-link').forEach(link => {
             link.addEventListener('click', function(e) {
                 e.preventDefault();
                 const targetId = this.getAttribute('href').substring(1);
-                
-                // Mettre à jour la navigation
+
+                // Update navigation
                 document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
                 document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
                 
@@ -138,18 +173,21 @@
             });
         });
 
-        // Initialisation
+        // Initialization
         document.addEventListener('DOMContentLoaded', function() {
+            loadDataOptions();
+            checkCurrentDataset();
+            loadModelOptions();
+            checkCurrentModel();
             initTrainingChart();
             initLatentSpaceChart();
-            loadDataOptions();
-            loadModelOptions();
-            checkCurrentDataset();
+            initReconstructionChart();
         });
 
 
 
-        // === FONCTIONS SECTION 1 : DONNÉES ===
+
+        // === FUNCTIONS SECTION 1 : DATA ===
 
         async function loadDataOptions() {
             try {
@@ -162,6 +200,7 @@
                         <input type="radio" name="dataFile" value="${file}" data-type="synthetic">
                         ${file}
                         <button onclick="loadDataset('${file}', 'synthetic')" class="btn-small">Load</button>
+                        <button onclick="deleteDataset('${file}', 'synthetic')" class="btn-small">Delete</button>
                     </div>`;
                 });
                 
@@ -171,12 +210,78 @@
                         <input type="radio" name="dataFile" value="${file}" data-type="uploaded">
                         ${file}
                         <button onclick="loadDataset('${file}', 'uploaded')" class="btn-small">Load</button>
+                        <button onclick="deleteDataset('${file}', 'synthetic')" class="btn-small">Delete</button>
                     </div>`;
                 });
                 
                 document.getElementById('dataOptions').innerHTML = html;
             } catch (error) {
-                console.error('Erreur:', error);
+                console.error('Error:', error);
+            }
+        }
+        
+        async function loadDataset(filename, dataType) {
+            try {
+                const response = await fetch(
+                    `${API_BASE}/load-dataset?filename=${filename}&data_type=${dataType}`,
+                    { method: 'POST' }
+                );
+                const result = await response.json();
+                checkCurrentDataset();
+                alert(`Dataset loaded: ${result.filename}`);
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error loading dataset');
+            }
+        }
+        
+        async function deleteDataset(filename, dataType) {
+            if (!confirm(`Are you sure you want to delete ${filename}?`)) {
+                return;
+            }
+            try {
+                const response = await fetch(
+                    `${API_BASE}/delete-dataset?filename=${filename}&data_type=${dataType}`,
+                    { method: 'DELETE' }
+                );
+                const result = await response.json();
+                alert(`Dataset deleted: ${result.filename}`);
+                loadDataOptions();
+                checkCurrentDataset();
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error deleting dataset');
+            }
+        }
+        
+        async function checkCurrentDataset() {
+            try {
+                const response = await fetch(`${API_BASE}/current-dataset`);
+                const data = await response.json();
+                
+                if (data.loaded) {
+                    document.getElementById('currentDataset').innerHTML = 
+                        `<div class="success">Dataset loaded: ${data.filename} (${data.shape[0]} samples, ${data.shape[1]} features)</div>`;
+                    document.getElementById('trainingDatasetInfo').innerHTML = 
+                        `<div class="success">Ready for training: ${data.filename} (${data.shape[0]} samples, ${data.shape[1]} features)</div>`;
+                    document.getElementById('visualizationDatasetInfo').innerHTML = 
+                        `<div class="success">Ready for visualization: ${data.filename} (${data.shape[0]} samples, ${data.shape[1]} features)</div>`;
+                } else {
+                    document.getElementById('currentDataset').innerHTML = 
+                        '<div class="warning">No dataset loaded</div>';
+                    document.getElementById('trainingDatasetInfo').innerHTML = 
+                        '<div class="warning">No dataset loaded for training</div>';
+                    document.getElementById('visualizationDatasetInfo').innerHTML =
+                        '<div class="warning">No dataset loaded for visualization</div>';
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('currentDataset').innerHTML = 
+                    '<div class="error">Error checking dataset</div>';
+                document.getElementById('trainingDatasetInfo').innerHTML = 
+                    '<div class="error">Error checking dataset</div>';
+                document.getElementById('visualizationDatasetInfo').innerHTML =
+                    '<div class="error">Error checking dataset</div>';
             }
         }
 
@@ -224,40 +329,8 @@
                     `<div class="error">Error uploading file</div>`;
             }
         }
-
-        async function loadDataset(filename, dataType) {
-            try {
-                const response = await fetch(
-                    `${API_BASE}/load-dataset?filename=${filename}&data_type=${dataType}`,
-                    { method: 'POST' }
-                );
-                const result = await response.json();
-                checkCurrentDataset();
-                alert(`Dataset loaded: ${result.filename}`);
-            } catch (error) {
-                console.error('Error:', error);
-                alert('Error loading dataset');
-            }
-        }
-
-        async function checkCurrentDataset() {
-            try {
-                const response = await fetch(`${API_BASE}/current-dataset`);
-                const data = await response.json();
-                
-                if (data.loaded) {
-                    document.getElementById('currentDataset').innerHTML = 
-                        `<div class="success">Dataset loaded: ${data.filename} (${data.shape[0]} samples, ${data.shape[1]} features)</div>`;
-                } else {
-                    document.getElementById('currentDataset').innerHTML = 
-                        '<div class="warning">No dataset loaded</div>';
-                }
-            } catch (error) {
-                console.error('Error:', error);
-            }
-        }
-
-        // === FONCTIONS SECTION 2 : ENTRAÎNEMENT ===
+        
+        // === FUNCTIONS SECTION 2 : TRAINING ===
 
         function initTrainingChart() {
             const ctx = document.getElementById('trainingChart').getContext('2d');
@@ -296,12 +369,59 @@
                     html += `<div class="file-item">
                         <input type="radio" name="modelFile" value="${model}">
                         ${model}
+                        <button onclick="deleteModel('${model}')" class="btn-small">Delete</button>
                     </div>`;
                 });
                 
                 document.getElementById('modelOptions').innerHTML = html || 'No saved models available.';
+
             } catch (error) {
                 console.error('Error:', error);
+            }
+        }
+
+        async function deleteModel(modelFilename) {
+            if (!confirm(`Are you sure you want to delete model ${modelFilename}?`)) {
+                return;
+            }
+            try {
+                const response = await fetch(
+                    `${API_BASE}/delete-model?model_filename=${modelFilename}`,
+                    { method: 'DELETE' }
+                );
+                const result = await response.json();
+                alert(`Model deleted: ${result.model_filename || modelFilename}`);
+                loadModelOptions();
+                checkCurrentModel();
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error deleting model');
+            }
+        }
+
+        async function checkCurrentModel() {
+            try {
+                const res = await fetch(`${API_BASE}/current-model`);
+                const info = await res.json();
+                const currentEl = document.getElementById('currentModelStatus');
+                const vizEl = document.getElementById('visualizationModelInfo');
+
+                if (info.error) {
+                    if (currentEl) currentEl.innerHTML = `<div class="error">Error loading model: ${info.error}</div>`;
+                    if (vizEl) vizEl.innerHTML = `<div class="error">Error loading model: ${info.error}</div>`;
+                } else if (info.loaded) {
+                    if (currentEl) currentEl.innerHTML = `<div class="success">Model loaded${info.encoding_dim? (': encoding_dim ' + info.encoding_dim) : ''}${info.input_dim? (', input_dim ' + info.input_dim) : ''}</div>`;
+                    if (vizEl) vizEl.innerHTML = `<div class="success">Ready for visualization:${info.encoding_dim? (': encoding_dim ' + info.encoding_dim) : ''}</div>`;
+                } else {
+                    if (currentEl) currentEl.innerHTML = '<div class="warning">No model loaded</div>';
+                    if (vizEl) vizEl.innerHTML = '<div class="warning">No model loaded for visualization</div>';
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                const currentEl = document.getElementById('currentModelStatus');
+                const vizEl = document.getElementById('visualizationModelInfo');
+                if (currentEl) currentEl.innerHTML = '<div class="error">Error checking model</div>';
+                if (vizEl) vizEl.innerHTML = '<div class="error">Error checking model</div>';
             }
         }
 
@@ -328,26 +448,6 @@
             }
         }
 
-        async function loadSelectedModel() {
-            const selected = document.querySelector('input[name="modelFile"]:checked');
-            if (!selected) {
-                alert('Please select a model');
-                return;
-            }
-            
-            try {
-                const response = await fetch(
-                    `${API_BASE}/load-model?model_filename=${selected.value}`,
-                    { method: 'POST' }
-                );
-                const result = await response.json();
-                alert(`Model loaded: ${result.model_loaded}`);
-            } catch (error) {
-                console.error('Error:', error);
-                alert('Error loading model');
-            }
-        }
-
         function startTrainingMonitoring() {
             trainingInterval = setInterval(updateTrainingStatus, 500);
         }
@@ -359,8 +459,8 @@
                 
                 document.getElementById('epochText').textContent = data.current_epoch;
                 document.getElementById('lossText').textContent = data.current_loss.toFixed(4);
-                
-                // Mettre à jour le graphique
+
+                // Update chart
                 if (data.epochs_data && data.loss_data) {
                     trainingChart.data.labels = data.epochs_data;
                     trainingChart.data.datasets[0].data = data.loss_data;
@@ -393,7 +493,32 @@
             }
         }
 
-        // === FONCTIONS SECTION 3 : VISUALISATION ===
+        async function loadSelectedModel() {
+            const selected = document.querySelector('input[name="modelFile"]:checked');
+            if (!selected) {
+                alert('Please select a model');
+                return;
+            }
+            
+            try {
+                const response = await fetch(
+                    `${API_BASE}/load-model?model_filename=${selected.value}`,
+                    { method: 'POST' }
+                );
+                const result = await response.json();
+                alert(`Model loaded: ${result.model_loaded}`);
+                // update UI state
+                checkCurrentModel();
+                loadModelOptions();
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error loading model');
+            }
+        }
+
+
+
+        // === FUNCTIONS SECTION 3 : VISUALIZATION ===
 
         function initLatentSpaceChart() {
             const ctx = document.getElementById('latentSpaceChart').getContext('2d');
@@ -437,6 +562,28 @@
             });
         }
 
+        function initReconstructionChart() {
+            const ctx = document.getElementById('reconstructionChart').getContext('2d');
+            reconstructionChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        { label: 'Original', data: [], borderColor: 'rgba(54,162,235,1)', fill: false },
+                        { label: 'Reconstruction', data: [], borderColor: 'rgba(255,99,132,1)', fill: false }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { title: { display: true, text: 'Feature index' } },
+                        y: { title: { display: true, text: 'Value' } }
+                    }
+                }
+            });
+        }
+
         async function generateLatentSpace() {
             try {
                 const response = await fetch(`${API_BASE}/latent-space`);
@@ -449,8 +596,119 @@
                 latentSpaceChart.data.datasets[1].data = anomalyPoints;
                 latentSpaceChart.update();
 
+                // store latent vectors for hover interactions
+                window._latent_vectors = data.latent_vectors || [];
+
                 document.getElementById('pointInfo').innerHTML =
                     `${data.points.length} points projected (${anomalyPoints.length} anomalies detected)`;
+
+                // attach mousemove listener to show dynamic coordinates and nearest sample
+                const canvas = document.getElementById('latentSpaceChart');
+                canvas.onmousemove = function(evt) {
+                    const rect = canvas.getBoundingClientRect();
+                    const x = evt.clientX - rect.left;
+                    const y = evt.clientY - rect.top;
+
+                    const chartArea = latentSpaceChart.chartArea;
+                    if (!chartArea) return;
+
+                    // convert pixel coordinates to chart (data) coordinates
+                    const xScale = latentSpaceChart.scales['x'];
+                    const yScale = latentSpaceChart.scales['y'];
+                    if (!xScale || !yScale) return;
+
+                    const px = xScale.getValueForPixel(x);
+                    const py = yScale.getValueForPixel(y);
+
+                    // find nearest latent vector in original latent space (not UMAP)
+                    let nearestIdx = -1;
+                    let nearestDist = Infinity;
+                    if (window._latent_vectors && window._latent_vectors.length) {
+                        // we need to find the inverse mapping from UMAP to latent - not trivial.
+                        // instead, we find nearest in UMAP projection space using original projected points (data.points)
+                        const allPoints = data.points;
+                        for (let i = 0; i < allPoints.length; i++) {
+                            const dx = allPoints[i].x - px;
+                            const dy = allPoints[i].y - py;
+                            const d = dx*dx + dy*dy;
+                            if (d < nearestDist) {
+                                nearestDist = d;
+                                nearestIdx = allPoints[i].original_index;
+                            }
+                        }
+                    }
+
+                    const latentVec = (window._latent_vectors && nearestIdx >= 0) ? window._latent_vectors[nearestIdx] : null;
+
+                    document.getElementById('pointInfo').innerHTML = 
+                        `UMAP: (${px.toFixed(3)}, ${py.toFixed(3)})` +
+                        (latentVec ? ` | Latent: [${latentVec.map(v => v.toFixed(4)).slice(0,8).join(', ')}${latentVec.length>8? ', ...':''}]` : '') +
+                        (nearestIdx>=0 ? ` | Nearest sample: ${nearestIdx}` : '');
+                };
+
+                // click handler: find nearest point and request reconstruction
+                canvas.onclick = async function(evt) {
+                    try {
+                        const rect = canvas.getBoundingClientRect();
+                        const x = evt.clientX - rect.left;
+                        const y = evt.clientY - rect.top;
+
+                        const xScale = latentSpaceChart.scales['x'];
+                        const yScale = latentSpaceChart.scales['y'];
+                        if (!xScale || !yScale) return;
+
+                        const px = xScale.getValueForPixel(x);
+                        const py = yScale.getValueForPixel(y);
+
+                        // find nearest in projected space
+                        let nearestIdx = -1;
+                        let nearestDist = Infinity;
+                        const allPoints = data.points || [];
+                        for (let i = 0; i < allPoints.length; i++) {
+                            const dx = allPoints[i].x - px;
+                            const dy = allPoints[i].y - py;
+                            const d = dx*dx + dy*dy;
+                            if (d < nearestDist) {
+                                nearestDist = d;
+                                nearestIdx = allPoints[i].original_index;
+                            }
+                        }
+
+                        if (nearestIdx < 0) {
+                            document.getElementById('reconInfo').textContent = 'No sample found near click';
+                            return;
+                        }
+
+                        // fetch reconstruction
+                        const resp = await fetch(`${API_BASE}/reconstruct?index=${nearestIdx}`);
+                        if (!resp.ok) {
+                            const err = await resp.json().catch(() => ({}));
+                            document.getElementById('reconInfo').textContent = `Error: ${err.detail || resp.statusText}`;
+                            return;
+                        }
+                        const recData = await resp.json();
+
+                        const original = recData.original || [];
+                        const reconstruction = recData.reconstruction || [];
+
+                        // prepare labels
+                        const labels = original.map((_, i) => i);
+
+                        // initialize reconstruction chart if needed
+                        if (!reconstructionChart) initReconstructionChart();
+
+                        reconstructionChart.data.labels = labels;
+                        reconstructionChart.data.datasets[0].data = original;
+                        reconstructionChart.data.datasets[1].data = reconstruction;
+                        reconstructionChart.update();
+
+                        document.getElementById('reconInfo').textContent = `Index: ${recData.index} | Distance (proj): ${nearestDist.toFixed(4)}`;
+
+                    } catch (err) {
+                        console.error('Reconstruction error', err);
+                        document.getElementById('reconInfo').textContent = 'Error fetching reconstruction';
+                    }
+                };
 
             } catch (error) {
                 console.error('Error:', error);

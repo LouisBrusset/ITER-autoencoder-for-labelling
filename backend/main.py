@@ -4,6 +4,15 @@ import json
 import asyncio
 from typing import Optional
 
+#    import warnings
+#    import pkg_resources
+
+# Conf os + warnings
+#    os.environ['PYTORCH_NVFUSER_DISABLE'] = '1'
+#    os.environ['PYTORCH_NVFUSER_DISABLE_FALLBACK'] = '1'
+#    warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
+#    warnings.filterwarnings("ignore", category=FutureWarning, module="pkg_resources")
+
 ### Third-party imports
 # API framework
 from fastapi import FastAPI, HTTPException, UploadFile, File
@@ -55,6 +64,10 @@ training_metrics = {
 
 
 
+@app.get("/")
+async def root():
+    return {"message": "Autoencoder Training API is running!"}
+
 
 # === SECTION 1 : DATA ===
 
@@ -70,15 +83,113 @@ async def get_data_options():
     }
 
 
+@app.get("/current-dataset")
+async def get_current_dataset():
+    """Yield the currently loaded dataset"""
+    try:
+        if os.path.exists("data/current_dataset.npz"):
+            data = np.load("data/current_dataset.npz")            
+            response_data = {
+                "loaded": True,
+                "filename": str(data.get('filename', 'current_dataset.npz'))
+            }
+            
+            dataset = data['data']
+            if hasattr(dataset, 'shape'):
+                response_data["shape"] = list(dataset.shape)
+            else:
+                response_data["shape"] = "Unknown"
+                
+            return response_data
+        return {"loaded": False}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/load-dataset")
+async def load_dataset(filename: str, data_type: str = "synthetic"):
+    """Load a specific dataset file as the current dataset"""
+    try:
+        if data_type == "synthetic":
+            filepath = f"data/synthetic/{filename}"
+        else:
+            filepath = f"data/uploaded/{filename}"
+        if not os.path.exists(filepath):
+            raise HTTPException(status_code=404, detail="File not found in directory")
+
+        # Load the data
+        if filename.endswith('.csv'):
+            df = pd.read_csv(filepath)
+            data = df.values
+            labels = np.zeros(len(data))
+        else:
+            loaded = np.load(filepath)
+            if 'data' in loaded:
+                data = loaded['data']
+            elif 'arr_0' in loaded:
+                data = loaded['arr_0']
+            else:
+                data = loaded[loaded.files[0]]
+            
+            labels = loaded['labels'] if 'labels' in loaded else np.zeros(len(data))
+
+        # Type conversion safe for serialization
+        data_for_save = data.copy() if hasattr(data, 'copy') else data
+        labels_for_save = labels.copy() if hasattr(labels, 'copy') else labels
+        
+        np.savez("data/current_dataset.npz", 
+                data=data_for_save, 
+                labels=labels_for_save, 
+                filename=filename)
+        
+        response_data = {
+            "status": "success",
+            "filename": filename,
+        }
+        if hasattr(data, 'shape'):
+            response_data["data_shape"] = list(data.shape)
+        if hasattr(labels, 'shape'):
+            response_data["labels_shape"] = list(labels.shape)
+            
+        return response_data
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/delete-dataset")
+async def delete_dataset(filename: str, data_type: str = "synthetic"):
+    """Delete a specific dataset file"""
+    try:
+        if data_type == "synthetic":
+            filepath = f"data/synthetic/{filename}"
+        else:
+            filepath = f"data/uploaded/{filename}"
+        
+        if not os.path.exists(filepath):
+            raise HTTPException(status_code=404, detail="No file found in directory")
+        
+        os.remove(filepath)
+
+        # If it was the current dataset, remove that as well
+        if os.path.exists("data/current_dataset.npz"):
+            current_data = np.load("data/current_dataset.npz")
+            if current_data.get('filename', '') == filename:
+                os.remove("data/current_dataset.npz")
+        
+        return {
+            "status": "success",
+            "filename": filename,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/create-synthetic-data")
 async def create_synthetic_data(n_samples: int = 1000, input_dim: int = 20, n_anomalies: int = 50):
-    """Crée des données synthétiques"""
+    """Create synthetic data and save to file"""
     try:
-        # Use the package helper to generate synthetic data (returns torch tensors)
         train_tensor, _ = generate_synthetic_data(n_samples=n_samples, input_dim=input_dim, n_anomalies=n_anomalies)
-        # convert to numpy for saving and for the frontend expectations
         all_data = train_tensor.numpy()
         labels = np.zeros(n_samples)
         labels[-n_anomalies:] = 1
@@ -97,24 +208,19 @@ async def create_synthetic_data(n_samples: int = 1000, input_dim: int = 20, n_an
         raise HTTPException(status_code=500, detail=str(e))
 
 
-
-
 @app.post("/upload-data")
 async def upload_data(file: UploadFile = File(...)):
-    """Upload un fichier de données"""
+    """Upload a file and save to uploaded data directory"""
     try:
-        # Vérifier l'extension
         if not file.filename.endswith(('.csv', '.npz')):
-            raise HTTPException(status_code=400, detail="Seuls les fichiers CSV et NPZ sont supportés")
+            raise HTTPException(status_code=400, detail="Only CSV and NPZ files are supported")
         
         filepath = f"data/uploaded/{file.filename}"
         
-        # Sauvegarder le fichier
         content = await file.read()
         with open(filepath, "wb") as f:
             f.write(content)
         
-        # Charger pour vérification
         if file.filename.endswith('.csv'):
             df = pd.read_csv(filepath)
             data_shape = df.shape
@@ -133,62 +239,6 @@ async def upload_data(file: UploadFile = File(...)):
 
 
 
-@app.get("/current-dataset")
-async def get_current_dataset():
-    """Retourne le dataset actuellement chargé"""
-    try:
-        if os.path.exists("data/current_dataset.npz"):
-            data = np.load("data/current_dataset.npz")
-            return {
-                "loaded": True,
-                "shape": data['data'].shape,
-                "filename": data.get('filename', 'current_dataset.npz')
-            }
-        return {"loaded": False}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-
-
-
-@app.post("/load-dataset")
-async def load_dataset(filename: str, data_type: str = "synthetic"):
-    """Charge un dataset spécifique"""
-    try:
-        if data_type == "synthetic":
-            filepath = f"data/synthetic/{filename}"
-        else:
-            filepath = f"data/uploaded/{filename}"
-        
-        if not os.path.exists(filepath):
-            raise HTTPException(status_code=404, detail="Fichier non trouvé")
-        
-        # Charger les données
-        if filename.endswith('.csv'):
-            df = pd.read_csv(filepath)
-            data = df.values
-            labels = np.zeros(len(data))  # Pas de labels par défaut
-        else:
-            loaded = np.load(filepath)
-            data = loaded['data'] if 'data' in loaded else loaded['arr_0']
-            labels = loaded['labels'] if 'labels' in loaded else np.zeros(len(data))
-        
-        # Sauvegarder comme dataset courant
-        np.savez("data/current_dataset.npz", data=data, labels=labels, filename=filename)
-        
-        return {
-            "status": "success",
-            "filename": filename,
-            "data_shape": data.shape,
-            "labels_shape": labels.shape
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-
-
 
 
 
@@ -196,24 +246,111 @@ async def load_dataset(filename: str, data_type: str = "synthetic"):
 
 @app.get("/model-options")
 async def get_model_options():
-    """Retourne les modèles sauvegardés"""
+    """Give saved model options"""
     saved_models = os.listdir("models/saved")
     return {"saved_models": saved_models}
 
+@app.delete("/delete-model")
+async def delete_model(model_filename: str):
+    """Delete a specific saved model file"""
+    try:
+        model_path = f"models/saved/{model_filename}"
+        if not os.path.exists(model_path):
+            raise HTTPException(status_code=404, detail="Model file not found")
+        
+        # If it was the current model, remove that as well
+        if os.path.exists("models/current_model.pth"):
+            try:
+                current_state = torch.load("models/current_model.pth")
+                saved_state = torch.load(model_path)
 
+                def state_dicts_equal(a, b):
+                    # Both must be dict-like
+                    if not isinstance(a, dict) or not isinstance(b, dict):
+                        return False
+                    if set(a.keys()) != set(b.keys()):
+                        return False
+                    for k in a.keys():
+                        va = a[k]
+                        vb = b[k]
+                        # If tensors, use torch.equal or allclose
+                        if isinstance(va, torch.Tensor) and isinstance(vb, torch.Tensor):
+                            try:
+                                if va.shape != vb.shape:
+                                    return False
+                                if not torch.equal(va, vb):
+                                    # fallback to allclose for floating types
+                                    if not torch.allclose(va, vb, atol=1e-6, rtol=1e-5):
+                                        return False
+                            except Exception:
+                                return False
+                        else:
+                            # fallback to simple equality for non-tensor values
+                            if va != vb:
+                                return False
+                    return True
+
+                if state_dicts_equal(current_state, saved_state):
+                    try:
+                        os.remove("models/current_model.pth")
+                    except Exception:
+                        # ignore errors removing the current model file
+                        pass
+            except Exception:
+                # If any error occurs while comparing/loading, don't block deletion of the saved model
+                pass
+        
+        os.remove(model_path)
+
+        return {
+            "status": "success",
+            "model_filename": model_filename
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/current-model")
+async def get_current_model():
+    """Return info about the currently loaded model (if any)."""
+    try:
+        if not os.path.exists("models/current_model.pth"):
+            return {"loaded": False}
+
+        state = torch.load("models/current_model.pth")
+        encoding_dim = None
+        if isinstance(state, dict) and 'encoder.2.weight' in state:
+            encoding_dim = int(state['encoder.2.weight'].shape[0])
+
+        # try to infer input_dim from current dataset
+        input_dim = None
+        if os.path.exists("data/current_dataset.npz"):
+            try:
+                d = np.load("data/current_dataset.npz")
+                if 'data' in d:
+                    input_dim = int(d['data'].shape[1])
+            except Exception:
+                input_dim = None
+
+        return {
+            "loaded": True,
+            "encoding_dim": encoding_dim,
+            "input_dim": input_dim
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/start-training")
 async def start_training(epochs: int = 100, learning_rate: float = 0.001, encoding_dim: int = 8):
-    """Démarre l'entraînement"""
+    """Start training the autoencoder model"""
     if training_metrics["is_training"]:
         raise HTTPException(status_code=400, detail="Training already in progress")
-    
-    # Vérifier qu'un dataset est chargé
+
+    # Check if a dataset is loaded
     if not os.path.exists("data/current_dataset.npz"):
-        raise HTTPException(status_code=400, detail="Aucun dataset chargé")
-    
-    # Charger les données
+        raise HTTPException(status_code=400, detail="No dataset loaded")
+
+    # Load the data
     data = np.load("data/current_dataset.npz")
     train_data = torch.FloatTensor(data['data'])
     
@@ -230,8 +367,6 @@ async def start_training(epochs: int = 100, learning_rate: float = 0.001, encodi
     asyncio.create_task(run_training(train_data, epochs, learning_rate, encoding_dim))
     
     return {"status": "Training started", "total_epochs": epochs}
-
-
 
 
 async def run_training(train_data, epochs, learning_rate, encoding_dim):
@@ -264,24 +399,22 @@ async def run_training(train_data, epochs, learning_rate, encoding_dim):
         training_metrics["is_training"] = False
 
 
-
 @app.get("/training-status")
 async def get_training_status():
     return training_metrics
 
 
-
 @app.post("/load-model")
 async def load_model(model_filename: str):
-    """Charge un modèle pré-entraîné"""
+    """Load a specific saved model file as the current model"""
     try:
         model_path = f"models/saved/{model_filename}"
         if not os.path.exists(model_path):
-            raise HTTPException(status_code=404, detail="Modèle non trouvé")
-        
-        # Vérifier qu'un dataset est chargé pour connaître la dimension
+            raise HTTPException(status_code=404, detail="Model not found")
+
+        # Check if a dataset is loaded to know the dimension
         if not os.path.exists("data/current_dataset.npz"):
-            raise HTTPException(status_code=400, detail="Chargez d'abord un dataset")
+            raise HTTPException(status_code=400, detail="First load a dataset")
         
         data = np.load("data/current_dataset.npz")
         input_dim = data['data'].shape[1]
@@ -315,7 +448,17 @@ async def load_model(model_filename: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     
-
+@app.post("/reset-training")
+async def reset_training():
+    training_metrics.update({
+        "is_training": False,
+        "current_epoch": 0,
+        "loss_history": [],
+        "current_loss": 0.0,
+        "epochs_data": [],
+        "loss_data": []
+    })
+    return {"status": "Training reset"}
 
 
 
@@ -324,13 +467,13 @@ async def load_model(model_filename: str):
 
 @app.get("/latent-space")
 async def get_latent_space():
-    """Calcule et retourne le latent space projeté en 2D"""
+    """Compute and return the 2D latent space projection of the current dataset using UMAP."""
     try:
-        # Vérifier qu'un modèle et des données sont chargés
+        # Check if a model and dataset are loaded
         if not os.path.exists("models/current_model.pth") or not os.path.exists("data/current_dataset.npz"):
-            raise HTTPException(status_code=400, detail="Chargez un modèle et des données d'abord")
-        
-        # Charger les données et le modèle
+            raise HTTPException(status_code=400, detail="First load a dataset and a model")
+
+        # Load the data and model
         data = np.load("data/current_dataset.npz")
         dataset = torch.FloatTensor(data['data'])
         labels = data['labels'] if 'labels' in data else np.zeros(len(data['data']))
@@ -347,15 +490,13 @@ async def get_latent_space():
         model.load_state_dict(state)
         model.eval()
         
-        # Calculer le latent space
+        # Calculate latent space & UMAP projection to 2D
         with torch.no_grad():
             latent_representations = model.encoder(dataset).numpy()
-        
-        # Projection UMAP en 2D
         reducer = umap.UMAP(n_components=2, random_state=42)
         latent_2d = reducer.fit_transform(latent_representations)
-        
-        # Préparer les données pour Chart.js
+
+        # Prepare data for Chart.js
         points = []
         for i, (x, y) in enumerate(latent_2d):
             points.append({
@@ -367,35 +508,61 @@ async def get_latent_space():
         
         return {
             "points": points,
-            "latent_dim": latent_representations.shape[1],
-            "original_dim": dataset.shape[1]
+            "latent_dim": int(latent_representations.shape[1]),
+            "original_dim": int(dataset.shape[1]),
+            "latent_vectors": latent_representations.tolist()
         }
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     
 
+@app.get("/reconstruct")
+async def reconstruct_sample(index: int = 0):
+    """Return original and reconstructed sample vectors for a given index."""
+    try:
+        # check files
+        if not os.path.exists("data/current_dataset.npz"):
+            raise HTTPException(status_code=400, detail="No dataset loaded")
+        if not os.path.exists("models/current_model.pth"):
+            raise HTTPException(status_code=400, detail="No model loaded")
 
+        # load data
+        data = np.load("data/current_dataset.npz")
+        X = data['data']
+        n_samples = X.shape[0]
+        if index < 0 or index >= n_samples:
+            raise HTTPException(status_code=400, detail=f"Index out of range (0..{n_samples-1})")
 
+        sample = torch.FloatTensor(X[index:index+1])  # keep batch dim
 
+        # load model state and instantiate model
+        state = torch.load('models/current_model.pth')
+        encoding_dim = None
+        if isinstance(state, dict) and 'encoder.2.weight' in state:
+            encoding_dim = state['encoder.2.weight'].shape[0]
+        if encoding_dim is None:
+            encoding_dim = 8
 
-@app.post("/reset-training")
-async def reset_training():
-    training_metrics.update({
-        "is_training": False,
-        "current_epoch": 0,
-        "loss_history": [],
-        "current_loss": 0.0,
-        "epochs_data": [],
-        "loss_data": []
-    })
-    return {"status": "Training reset"}
+        input_dim = X.shape[1]
+        model = SimpleAutoencoder(input_dim=input_dim, encoding_dim=encoding_dim)
+        model.load_state_dict(state)
+        model.eval()
 
+        with torch.no_grad():
+            reconstructed = model(sample).numpy()[0]
 
+        original = X[index].tolist()
+        reconstruction = reconstructed.tolist()
 
+        return {
+            "index": int(index),
+            "original": original,
+            "reconstruction": reconstruction,
+            "message": "success"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-
-
-@app.get("/")
-async def root():
-    return {"message": "Autoencoder Training API is running!"}
