@@ -2,8 +2,8 @@ import asyncio
 
 import torch
 
-from src.autoencoder_for_labelling.models.autoencoder import SimpleAutoencoder
-from src.autoencoder_for_labelling.training.trainer import train_autoencoder
+from autoencoder_for_labelling.models.autoencoder import SimpleAutoencoder
+from autoencoder_for_labelling.training.trainer import train_autoencoder
 
 # Shared training metrics state
 training_metrics = {

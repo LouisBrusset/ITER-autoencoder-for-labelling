@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, File
 import numpy as np
 import pandas as pd
 
-from src.autoencoder_for_labelling.data.dataset import generate_synthetic_data
+from autoencoder_for_labelling.data.dataset import generate_synthetic_data
 
 router = APIRouter()
 

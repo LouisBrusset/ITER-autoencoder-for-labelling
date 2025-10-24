@@ -1,24 +1,38 @@
 SHELL := /bin/bash
 
-.PHONY: run test clean
+.PHONY: run test clean test-api
 
-# run: clean data/models then start the backend server (foreground)
+# run: clean data/models/tests then start the backend server
 run:
 	@echo "Cleaning data and models before starting..."
 	@$(MAKE) clean
 	@echo "Starting backend (uvicorn) on port 8000"
-	@cd backend && uvicorn main:app --reload --host 0.0.0.0 --port 8000
+	@uvicorn src.autoencoder_for_labelling.main:app --reload --host 0.0.0.0 --port 8000
 
-# test: start a temporary backend in background, run smoke curl checks, then stop it
+# test: run tests with coverage and generate report
 test:
-	@echo "To implement..."
-	
-# clean: remove generated data and model artifacts so you can start fresh
+	@echo "Running tests with coverage..."
+	@uv run pytest --cov=autoencoder_for_labelling --cov-report=term-missing --cov-report=html
+
+# test-quick: run tests without coverage for faster feedback
+test-quick:
+	@echo "Running tests quickly..."
+	@uv run pytest -v
+
+# clean: remove generated data, model artifacts, and coverage files
 clean:
-	@echo "Removing dataset and uploaded/synthetic files in backend/data and backend/models"
-	@rm -f backend/data/current_dataset.npz || true
-	@rm -rf backend/data/synthetic/* || true
-	@rm -rf backend/data/uploaded/* || true
-	@rm -f backend/models/current_model.pth || true
-	@rm -rf backend/models/saved/* || true
+	@echo "Removing dataset and uploaded/synthetic files in data and models"
+	@rm -f data/current_dataset.npz || true
+	@rm -rf data/synthetic/* || true
+	@rm -rf data/uploaded/* || true
+	@rm -f models/current_model.pth || true
+	@rm -rf models/saved/* || true
+	@echo "Removing coverage files from tests..."
+	@rm -f .coverage || true
+	@rm -rf htmlcov/ || true
+	@rm -rf .pytest_cache/ || true
+	@rm -rf __pycache__/ || true
+	@rm -rf */__pycache__/ || true
+	@rm -rf */*/__pycache__/ || true
+	@rm -rf */*/*/__pycache__/ || true
 	@echo "Clean complete."

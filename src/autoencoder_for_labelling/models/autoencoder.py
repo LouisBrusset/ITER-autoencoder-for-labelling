@@ -13,7 +13,7 @@ class SimpleAutoencoder(nn.Module):
             nn.Linear(encoding_dim, 16),
             nn.ReLU(),
             nn.Linear(16, input_dim),
-            nn.Sigmoid()  # Pour avoir une sortie entre 0 et 1
+            nn.Sigmoid()
         )
     
     def forward(self, x):

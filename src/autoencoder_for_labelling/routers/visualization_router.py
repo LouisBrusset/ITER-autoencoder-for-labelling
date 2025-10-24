@@ -6,7 +6,7 @@ import numpy as np
 import torch
 import umap
 
-from src.autoencoder_for_labelling.models.autoencoder import SimpleAutoencoder
+from autoencoder_for_labelling.models.autoencoder import SimpleAutoencoder
 
 router = APIRouter()
 

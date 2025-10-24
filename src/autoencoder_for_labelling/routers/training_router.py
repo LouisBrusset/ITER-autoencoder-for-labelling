@@ -7,8 +7,8 @@ from fastapi import APIRouter, HTTPException
 import torch
 import numpy as np
 
-from services.training_service import training_metrics, run_training
-from src.autoencoder_for_labelling.models.autoencoder import SimpleAutoencoder
+from autoencoder_for_labelling.services.training_service import training_metrics, run_training
+from autoencoder_for_labelling.models.autoencoder import SimpleAutoencoder
 
 router = APIRouter()
 
