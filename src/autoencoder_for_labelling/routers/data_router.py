@@ -33,6 +33,17 @@ async def get_current_dataset():
             }
             dataset = data['data']
             response_data["shape"] = list(dataset.shape) if hasattr(dataset, 'shape') else "Unknown"
+            # expose train/val counts if is_train mask present
+            if 'is_train' in data:
+                try:
+                    is_train = np.array(data['is_train'], dtype=bool)
+                    response_data['is_train_present'] = True
+                    response_data['n_train'] = int(is_train.sum())
+                    response_data['n_val'] = int((~is_train).sum())
+                except Exception:
+                    response_data['is_train_present'] = False
+            else:
+                response_data['is_train_present'] = False
             return response_data
         return {"loaded": False}
     except Exception as e:
@@ -68,13 +79,28 @@ async def load_dataset(filename: str, data_type: str = "synthetic"):
         # Type conversion safe for serialization
         data_for_save = data.copy() if hasattr(data, 'copy') else data
         labels_for_save = labels.copy() if hasattr(labels, 'copy') else labels
-        
-        np.savez(
-            "data/current_dataset.npz", 
-            data=data_for_save, 
-            labels=labels_for_save, 
-            filename=filename
-        )
+        # preserve is_train if present in source file
+        is_train = None
+        if isinstance(loaded, np.lib.npyio.NpzFile) and 'is_train' in loaded:
+            raw_is_train = loaded['is_train']
+            # ensure boolean numpy array
+            is_train = np.array(raw_is_train, dtype=bool)
+
+        if is_train is not None:
+            np.savez(
+                "data/current_dataset.npz",
+                data=data_for_save,
+                labels=labels_for_save,
+                is_train=is_train,
+                filename=filename
+            )
+        else:
+            np.savez(
+                "data/current_dataset.npz",
+                data=data_for_save,
+                labels=labels_for_save,
+                filename=filename
+            )
 
         response_data = {
             "status": "success", 
@@ -120,23 +146,27 @@ async def delete_dataset(filename: str, data_type: str = "synthetic"):
 
 
 @router.post("/create-synthetic-data")
-async def create_synthetic_data(n_samples: int = 1000, input_dim: int = 20, n_anomalies: int = 50):
+async def create_synthetic_data(n_samples: int = 1000, input_dim: int = 20, n_anomalies: int = 50, val_ratio: float = 0.2):
     """Create synthetic data and save to file"""
     try:
-        train_tensor, _ = generate_synthetic_data(n_samples=n_samples, input_dim=input_dim, n_anomalies=n_anomalies)
-        all_data = train_tensor.numpy()
-        labels = np.zeros(n_samples)
-        labels[-n_anomalies:] = 1
-        
+        data_arr, labels_arr, is_train = generate_synthetic_data(
+            n_samples=n_samples, input_dim=input_dim, n_anomalies=n_anomalies, val_ratio=val_ratio
+        )
+
+        # Ensure train entries have labels 0 (labels only meaningful for validation)
+        labels_for_save = labels_arr.copy()
+        labels_for_save[is_train] = 0
+
         filename = f"synthetic_data_{n_samples}_{input_dim}.npz"
         filepath = f"data/synthetic/{filename}"
-        np.savez(filepath, data=all_data, labels=labels)
+        np.savez(filepath, data=data_arr, labels=labels_for_save, is_train=is_train)
         
         return {
-            "status": "success", 
-            "filename": filename, 
-            "data_shape": all_data.shape, 
-            "anomalies_count": n_anomalies
+            "status": "success",
+            "filename": filename,
+            "data_shape": data_arr.shape,
+            "anomalies_count": n_anomalies,
+            "val_ratio": float(val_ratio)
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

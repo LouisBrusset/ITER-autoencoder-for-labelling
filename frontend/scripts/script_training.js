@@ -9,11 +9,21 @@ window.initTrainingChart = function() {
         type: 'line',
         data: {
             labels: [],
-            datasets: [{
+            datasets: [
+            {
                 label: 'Training Loss',
                 data: [],
                 borderColor: 'rgb(75, 192, 192)',
                 backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                borderWidth: 2,
+                pointRadius: 3,
+                fill: true
+            },
+            {
+                label: 'Validation Loss',
+                data: [],
+                borderColor: 'rgb(255, 99, 132)',
+                backgroundColor: 'rgba(255, 99, 132, 0.08)',
                 borderWidth: 2,
                 pointRadius: 3,
                 fill: true
@@ -132,12 +142,18 @@ window.updateTrainingStatus = async function() {
         const data = await response.json();
         
         document.getElementById('epochText').textContent = data.current_epoch;
-        document.getElementById('lossText').textContent = data.current_loss.toFixed(4);
+        // display current train/val loss if available
+        const trainLoss = data.current_train_loss !== undefined ? data.current_train_loss : null;
+        const valLoss = data.current_val_loss !== undefined ? data.current_val_loss : null;
+        document.getElementById('lossText').textContent = (trainLoss !== null ? trainLoss.toFixed(4) : 'N/A') + (valLoss !== null ? ` / ${valLoss.toFixed(4)}` : '');
 
-        // Update chart
-        if (data.epochs_data && data.loss_data) {
+        // Update chart: use epochs_data and train_loss_history / val_loss_history
+        if (data.epochs_data) {
             trainingChart.data.labels = data.epochs_data;
-            trainingChart.data.datasets[0].data = data.loss_data;
+            // training dataset
+            if (data.train_loss_history) trainingChart.data.datasets[0].data = data.train_loss_history;
+            // validation dataset
+            if (data.val_loss_history) trainingChart.data.datasets[1].data = data.val_loss_history;
             trainingChart.update();
         }
         
@@ -159,7 +175,8 @@ window.resetTraining = async function() {
         document.getElementById('epochText').textContent = '0';
         document.getElementById('lossText').textContent = '0.0000';
         trainingChart.data.labels = [];
-        trainingChart.data.datasets[0].data = [];
+        if (trainingChart.data.datasets && trainingChart.data.datasets[0]) trainingChart.data.datasets[0].data = [];
+        if (trainingChart.data.datasets && trainingChart.data.datasets[1]) trainingChart.data.datasets[1].data = [];
         trainingChart.update();
         clearInterval(trainingInterval);
     } catch (error) {

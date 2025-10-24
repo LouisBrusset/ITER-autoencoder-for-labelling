@@ -30,6 +30,11 @@ window._buildLabelSummaryHTML = function(counts, colorMap){
 
 window.initClassificationChart = function() {
     const ctx = document.getElementById('classificationChart').getContext('2d');
+    // destroy previous chart instance if present to avoid duplicate listeners/state
+    if (window.classificationChart) {
+        try { window.classificationChart.destroy(); } catch (e) { /* ignore */ }
+        window.classificationChart = null;
+    }
     window.classificationChart = new Chart(ctx, {
         type: 'scatter',
         data: { datasets: [{ label: 'Points', data: [], pointRadius: 4 }] },
@@ -40,7 +45,10 @@ window.initClassificationChart = function() {
     overlayCanvas = document.getElementById('classificationOverlay');
     overlayCanvas.style.pointerEvents = 'auto';
     overlayCtx = overlayCanvas.getContext('2d');
+    // ensure overlay matches the chart immediately
     syncOverlayToChart();
+    // clear any previous drawings
+    if (overlayCtx) overlayCtx.clearRect(0,0,overlayCanvas.width, overlayCanvas.height);
     window.addEventListener('resize', () => { if (classificationChart) syncOverlayToChart(); });
 
     // mouse events for drawing polygon
@@ -113,7 +121,8 @@ window.syncOverlayToChart = function(){
 
 window.generateClassificationLatentSpace = async function(){
     try{
-        const resp = await fetch(`${API_BASE}/latent-space`);
+        const subset = document.querySelector('input[name="classSubset"]:checked')?.value || 'validation';
+        const resp = await fetch(`${API_BASE}/latent-space?subset=${encodeURIComponent(subset)}`);
         const data = await resp.json();
         classificationData = { points: data.points.map(p=>({x:p.x,y:p.y,label:p.label,original_index:p.original_index})) };
         initClassificationChart(); renderClassificationPoints();
@@ -234,6 +243,27 @@ window.saveLabels = async function(){
         }
         const saveBtn = document.getElementById('saveLabelsBtn'); if (saveBtn) saveBtn.disabled = true;
     }catch(err){ console.error(err); alert('Error saving labels: '+err.message); }
+};
+
+// export all labels grouped by train/validation and download as JSON
+window.extractAllLabels = async function(){
+    try{
+        const resp = await fetch(`${API_BASE}/export-all-labels`);
+        if(!resp.ok){ const txt = await resp.text(); throw new Error(txt||'Failed to export labels'); }
+        const payload = await resp.json();
+        const filename = payload.file ? payload.file.split('/').pop() : `exported_labels_${Date.now()}.json`;
+        const data = payload.data || {};
+
+        // create blob and download
+        const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(url);
+
+        const infoEl = document.getElementById('classificationInfo');
+        if(infoEl) infoEl.textContent = `Exported labels to ${filename}`;
+    }catch(err){ console.error(err); alert('Error exporting labels: '+err.message); }
 };
 
 })();

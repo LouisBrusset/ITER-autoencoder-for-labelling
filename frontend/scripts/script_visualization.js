@@ -30,7 +30,8 @@ window.initReconstructionChart = function() {
 
 window.generateLatentSpace = async function() {
     try {
-        const response = await fetch(`${API_BASE}/latent-space`);
+        const subset = document.querySelector('input[name="visSubset"]:checked')?.value || 'validation';
+        const response = await fetch(`${API_BASE}/latent-space?subset=${encodeURIComponent(subset)}`);
         const data = await response.json();
         // Group points dynamically by label so we can support an unknown number of labels
         const groups = {};

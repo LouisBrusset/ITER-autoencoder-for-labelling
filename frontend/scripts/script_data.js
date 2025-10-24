@@ -116,10 +116,11 @@ window.createSyntheticData = async function() {
     const nSamples = document.getElementById('nSamples').value;
     const inputDim = document.getElementById('inputDim').value;
     const nAnomalies = document.getElementById('nAnomalies').value;
+    const valRatio = document.getElementById('valRatio') ? document.getElementById('valRatio').value : 0.2;
     
     try {
         const response = await fetch(
-            `${API_BASE}/create-synthetic-data?n_samples=${nSamples}&input_dim=${inputDim}&n_anomalies=${nAnomalies}`,
+            `${API_BASE}/create-synthetic-data?n_samples=${nSamples}&input_dim=${inputDim}&n_anomalies=${nAnomalies}&val_ratio=${valRatio}`,
             { method: 'POST' }
         );
         const result = await response.json();

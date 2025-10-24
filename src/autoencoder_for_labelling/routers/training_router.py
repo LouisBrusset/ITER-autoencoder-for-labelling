@@ -122,20 +122,30 @@ async def start_training(epochs: int = 100, learning_rate: float = 0.001, encodi
     if not os.path.exists("data/current_dataset.npz"):
         raise HTTPException(status_code=400, detail="No dataset loaded")
     
-    data = np.load("data/current_dataset.npz")
-    train_data = torch.FloatTensor(data['data'])
+    data = np.load("data/current_dataset.npz", allow_pickle=True)
+    all_data = data['data']
+    # if is_train is present, split accordingly, else assume all data is train and val empty
+    if 'is_train' in data:
+        is_train = data['is_train']
+    else:
+        is_train = np.ones(len(all_data), dtype=bool)
+    train_idx = np.where(is_train)[0]
+    val_idx = np.where(~is_train)[0]
+    train_data = torch.FloatTensor(all_data[train_idx])
+    val_data = torch.FloatTensor(all_data[val_idx]) if len(val_idx) > 0 else None
     
     training_metrics.update({
         "is_training": True,
         "current_epoch": 0,
         "total_epochs": epochs,
-        "loss_history": [],
-        "current_loss": 0.0,
-        "epochs_data": [],
-        "loss_data": []
+        "train_loss_history": [],
+        "val_loss_history": [],
+        "current_train_loss": 0.0,
+        "current_val_loss": None,
+        "epochs_data": []
     })
 
-    asyncio.create_task(run_training(train_data, epochs, learning_rate, encoding_dim))
+    asyncio.create_task(run_training(train_data, val_data, epochs, learning_rate, encoding_dim))
     
     return {"status": "Training started", "total_epochs": epochs}
 
@@ -192,9 +202,11 @@ async def reset_training():
     training_metrics.update({
         "is_training": False,
         "current_epoch": 0,
-        "loss_history": [],
-        "current_loss": 0.0,
-        "epochs_data": [],
-        "loss_data": []
+        "total_epochs": 0,
+        "train_loss_history": [],
+        "val_loss_history": [],
+        "current_train_loss": 0.0,
+        "current_val_loss": None,
+        "epochs_data": []
     })
     return {"status": "Training reset"}

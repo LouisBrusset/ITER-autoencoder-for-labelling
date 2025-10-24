@@ -115,6 +115,13 @@ h2 {
     font-weight: 500;
     color: #495057;
 }
+
+/* Radio group inline styling */
+.radio-group label {
+    display: inline-block;
+    margin-right: 12px;
+    font-weight: 500;
+}
 /*Form controls (inputs & selects)*/
 .form-group input,
 .form-group select {

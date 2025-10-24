@@ -37,15 +37,19 @@
                 <h3>or create synthetic data</h3>
                 <div class="form-group">
                     <label>Number of samples:</label>
-                    <input type="number" id="nSamples" value="1000" min="100" max="10000">
+                    <input type="number" id="nSamples" value="2000" min="100" max="10000">
                 </div>
                 <div class="form-group">
                     <label>Data dimension:</label>
-                    <input type="number" id="inputDim" value="20" min="5" max="100">
+                    <input type="number" id="inputDim" value="50" min="5" max="100">
                 </div>
                 <div class="form-group">
                     <label>Number of anomalies:</label>
-                    <input type="number" id="nAnomalies" value="50" min="0" max="200">
+                    <input type="number" id="nAnomalies" value="100" min="0" max="200">
+                </div>
+                <div class="form-group">
+                    <label>Validation ratio (0-0.9):</label>
+                    <input type="number" id="valRatio" value="0.5" step="0.05" min="0" max="0.9">
                 </div>
                 <button onclick="createSyntheticData()" class="btn-primary">Create data</button>
             </div>
@@ -74,6 +78,13 @@
                     <label>Sample index (0-based):</label>
                     <input type="number" id="checkSampleIndex" value="0" min="0">
                 </div>
+                <div class="form-group radio-group">
+                    <label>Sample subset:</label>
+                    <div>
+                        <label><input type="radio" name="checkSubset" value="train" checked> Train only</label>
+                        <label><input type="radio" name="checkSubset" value="all"> All (global index)</label>
+                    </div>
+                </div>
                 <button onclick="showSamplePlot(document.getElementById('checkSampleIndex').value)" class="btn-primary">Show sample</button>
                 <button onclick="showRandomSample()" class="btn-secondary">Random sample</button>
             </div>
@@ -88,7 +99,7 @@
 
         <!-- SECTION 3 : TRAINING -->
         <section id="section-training" class="section">
-            <h2>2. Training the Model</h2>
+            <h2>3. Training the Model</h2>
 
             <div class="card">
                 <h3>Dataset Information</h3>
@@ -101,15 +112,15 @@
                 <h3>Training Parameters</h3>
                 <div class="form-group">
                     <label>Number of epochs:</label>
-                    <input type="number" id="trainingEpochs" value="100" min="10" max="1000">
+                    <input type="number" id="trainingEpochs" value="60" min="10" max="1000">
                 </div>
                 <div class="form-group">
                     <label>Learning rate:</label>
-                    <input type="number" id="learningRate" value="0.001" step="0.0001" min="0.0001" max="0.1">
+                    <input type="number" id="learningRate" value="0.01" step="0.0001" min="0.0001" max="0.1">
                 </div>
                 <div class="form-group">
                     <label>Latent dimension:</label>
-                    <input type="number" id="encodingDim" value="8" min="2" max="20">
+                    <input type="number" id="encodingDim" value="5" min="2" max="20">
                 </div>
                 <button onclick="startTraining()" class="btn-primary" id="startTrainingBtn">Start Training</button>
             </div>
@@ -141,7 +152,7 @@
 
         <!-- SECTION 3 : VISUALIZATION -->
         <section id="section-visualization" class="section">
-            <h2>3. Latent Space Visualization</h2>
+            <h2>4. Latent Space Visualization</h2>
 
             <div class="card">
                 <h3>Dataset Information</h3>
@@ -159,6 +170,14 @@
             
             <div class="card">
                 <h3>2D Projection of Latent Space</h3>
+                <div class="form-group radio-group">
+                    <label>Projection subset:</label>
+                    <div>
+                        <label><input type="radio" name="visSubset" value="train"> Train</label>
+                        <label><input type="radio" name="visSubset" value="validation" checked> Validation</label>
+                        <label><input type="radio" name="visSubset" value="all"> All</label>
+                    </div>
+                </div>
                 <button onclick="generateLatentSpace()" class="btn-primary">Generate Visualization</button>
                 <div style="position: relative; height:600px; width:100%;">
                     <canvas id="latentSpaceChart"></canvas>
@@ -193,9 +212,18 @@
 
             <div class="card">
                 <h3>2D Projection (select to label)</h3>
+                <div class="form-group radio-group">
+                    <label>Projection subset:</label>
+                    <div>
+                        <label><input type="radio" name="classSubset" value="train"> Train</label>
+                        <label><input type="radio" name="classSubset" value="validation" checked> Validation</label>
+                        <label><input type="radio" name="classSubset" value="all"> All</label>
+                    </div>
+                </div>
                 <button onclick="generateClassificationLatentSpace()" class="btn-primary">Load projection</button>
                 <button onclick="applyClassificationColors()" class="btn-secondary" id="applyLabelsBtn" disabled>Apply new labels</button>
                 <button onclick="saveLabels()" class="btn-success" id="saveLabelsBtn" disabled>Save labels</button>
+                <button onclick="extractAllLabels()" class="btn-success" id="extractAllBtn" style="background-color:rgb(62, 173, 62); color:white">Extract all labels</button>
                 <div id="classificationContainer" style="position:relative; height:600px; width:100%;">
                     <canvas id="classificationChart"></canvas>
                     <!-- overlay canvas for drawing selection polygon -->
