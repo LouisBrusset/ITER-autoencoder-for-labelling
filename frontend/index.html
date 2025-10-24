@@ -146,6 +146,14 @@
                     No model loaded
                 </div>
             </div>
+            <div class="card">
+                <h3>Inference</h3>
+                <div style="margin-bottom:8px;">
+                    <label style="margin-right:8px;"><input type="checkbox" id="inferenceDeterministic" checked> Deterministic UMAP</label>
+                </div>
+                <button onclick="runInference()" class="btn-success" id="runInferenceBtn" style="background-color:rgb(62, 173, 62); color:white">Inference</button>
+                <div id="inferenceStatus" class="status-info">Inference not run</div>
+            </div>
         </section>
 
 

@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException
 import torch
 import numpy as np
 
-from autoencoder_for_labelling.services.training_service import training_metrics, run_training
+from autoencoder_for_labelling.services.training_service import training_metrics, run_training, perform_full_inference
 from autoencoder_for_labelling.models.autoencoder import SimpleAutoencoder
 
 router = APIRouter()
@@ -210,3 +210,66 @@ async def reset_training():
         "epochs_data": []
     })
     return {"status": "Training reset"}
+
+
+@router.post("/run-inference")
+async def run_inference(deterministic: bool = True):
+    """Trigger inference using the current model and dataset and save latents/reconstructions/projection files.
+
+    Query/JSON param `deterministic` controls deterministic UMAP.
+    """
+    try:
+        if not os.path.exists("data/current_dataset.npz"):
+            raise HTTPException(status_code=400, detail="No dataset loaded")
+        if not os.path.exists("models/current_model.pth"):
+            raise HTTPException(status_code=400, detail="No model loaded")
+
+        result = await perform_full_inference(deterministic=deterministic)
+        return {"status": "inference_complete", "files": result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/inference-options")
+async def inference_options():
+    """Return available saved inference artifacts for the currently loaded dataset (latents, projections, reconstructions)."""
+    try:
+        current_dataset = None
+        if os.path.exists("data/current_dataset.npz"):
+            try:
+                import numpy as _np
+                d = _np.load("data/current_dataset.npz", allow_pickle=True)
+                current_dataset = str(d.get('filename', 'current_dataset'))
+            except Exception:
+                current_dataset = None
+
+        def list_matches(dirpath):
+            out = []
+            if not os.path.exists(dirpath):
+                return out
+            for f in os.listdir(dirpath):
+                if not f.endswith('.npz'):
+                    continue
+                full = os.path.join(dirpath, f)
+                try:
+                    import numpy as _np
+                    meta = _np.load(full, allow_pickle=True)
+                    dsname = str(meta.get('filename', ''))
+                    ts = int(meta.get('timestamp', os.path.getmtime(full))) if 'timestamp' in meta else int(os.path.getmtime(full))
+                    if current_dataset is None or dsname == current_dataset:
+                        out.append({'file': full, 'dataset': dsname, 'timestamp': int(ts)})
+                except Exception:
+                    # ignore unreadable files
+                    pass
+            out.sort(key=lambda x: x['timestamp'], reverse=True)
+            return out
+
+        latents = list_matches(os.path.join('results','latents'))
+        projections = list_matches(os.path.join('results','projections2d'))
+        reconstructions = list_matches(os.path.join('results','reconstructions'))
+
+        return { 'latents': latents, 'projections': projections, 'reconstructions': reconstructions }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

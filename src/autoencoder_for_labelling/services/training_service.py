@@ -1,6 +1,10 @@
 import asyncio
 
 import torch
+import numpy as np
+import time
+import os
+import umap
 
 from autoencoder_for_labelling.models.autoencoder import SimpleAutoencoder
 from autoencoder_for_labelling.training.trainer import train_autoencoder
@@ -46,3 +50,105 @@ async def run_training(train_data, val_data, epochs, learning_rate, encoding_dim
         print(f"Training error: {e}")
     finally:
         training_metrics["is_training"] = False
+
+
+async def perform_full_inference(deterministic: bool = True) -> dict:
+    """Run inference with the current model on the current dataset and save latents,
+    reconstructions and 2D projections as .npz files that mirror the dataset structure.
+
+    The saved files will be placed in:
+      - results/latents/latents_<ts>_<dataset_filename>.npz  (key 'data' = latents)
+      - results/projections2d/projection2d_<ts>_<dataset_filename>.npz (key 'data' = 2D proj)
+      - results/reconstructions/reconstructions_<ts>_<dataset_filename>.npz (key 'data' = reconstructions)
+
+    Each file will also contain 'labels' and 'is_train' if present in the original dataset
+    and a 'filename' and 'timestamp' metadata field.
+    """
+    dataset_path = 'data/current_dataset.npz'
+    model_path = 'models/current_model.pth'
+    if not os.path.exists(dataset_path):
+        raise RuntimeError('No current dataset found for inference')
+    if not os.path.exists(model_path):
+        raise RuntimeError('No current model found for inference')
+
+    d = np.load(dataset_path, allow_pickle=True)
+    all_data = d['data']
+    dataset_filename = str(d.get('filename', 'current_dataset'))
+    labels = d['labels'] if 'labels' in d else None
+    is_train = d['is_train'] if 'is_train' in d else None
+    n_samples = int(all_data.shape[0])
+
+    # load model
+    state = torch.load(model_path)
+    encoding_dim = None
+    if isinstance(state, dict) and 'encoder.2.weight' in state:
+        encoding_dim = int(state['encoder.2.weight'].shape[0])
+    if encoding_dim is None:
+        encoding_dim = 8
+    input_dim = int(all_data.shape[1])
+    model = SimpleAutoencoder(input_dim=input_dim, encoding_dim=encoding_dim)
+    model.load_state_dict(state)
+    model.eval()
+
+    # compute latents and reconstructions in batches
+    batch = 1024
+    latents_list = []
+    recons_list = []
+    with torch.no_grad():
+        for i in range(0, n_samples, batch):
+            chunk = torch.FloatTensor(all_data[i:i+batch])
+            latent = model.encoder(chunk).cpu().numpy()
+            recon = model(chunk).cpu().numpy()
+            latents_list.append(latent)
+            recons_list.append(recon)
+    latents = np.vstack(latents_list)
+    reconstructions = np.vstack(recons_list)
+
+    # UMAP projection (deterministic option)
+    try:
+        if deterministic:
+            reducer = umap.UMAP(n_components=2, random_state=42, n_jobs=1)
+        else:
+            reducer = umap.UMAP(n_components=2, init='spectral', n_neighbors=15, n_jobs=-1, random_state=None)
+        projection2d = reducer.fit_transform(latents)
+    except Exception:
+        # fallback to PCA-like reduction
+        X = latents - np.mean(latents, axis=0, keepdims=True)
+        u, s, vt = np.linalg.svd(X, full_matrices=False)
+        projection2d = (u[:, :2] * s[:2])
+
+    ts = int(time.time())
+    latents_dir = os.path.join('results', 'latents')
+    proj_dir = os.path.join('results', 'projections2d')
+    recon_dir = os.path.join('results', 'reconstructions')
+    os.makedirs(latents_dir, exist_ok=True)
+    os.makedirs(proj_dir, exist_ok=True)
+    os.makedirs(recon_dir, exist_ok=True)
+
+    latents_fname = os.path.join(latents_dir, f'latents_{ts}_{dataset_filename}.npz')
+    proj_fname = os.path.join(proj_dir, f'projection2d_{ts}_{dataset_filename}.npz')
+    recon_fname = os.path.join(recon_dir, f'reconstructions_{ts}_{dataset_filename}.npz')
+
+    # Save in dataset-like structure: key 'data' holds the array
+    latents_save = {'data': latents, 'latent_dim': latents.shape[1], 'timestamp': ts, 'filename': dataset_filename}
+    if labels is not None:
+        latents_save['labels'] = labels
+    if is_train is not None:
+        latents_save['is_train'] = is_train
+    np.savez_compressed(latents_fname, **latents_save)
+
+    proj_save = {'data': projection2d, 'timestamp': ts, 'filename': dataset_filename}
+    if labels is not None:
+        proj_save['labels'] = labels
+    if is_train is not None:
+        proj_save['is_train'] = is_train
+    np.savez_compressed(proj_fname, **proj_save)
+
+    recon_save = {'data': reconstructions, 'timestamp': ts, 'filename': dataset_filename}
+    if labels is not None:
+        recon_save['labels'] = labels
+    if is_train is not None:
+        recon_save['is_train'] = is_train
+    np.savez_compressed(recon_fname, **recon_save)
+
+    return {'latents': latents_fname, 'projection2d': proj_fname, 'reconstructions': recon_fname}
