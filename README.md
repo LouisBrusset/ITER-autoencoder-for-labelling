@@ -40,7 +40,7 @@ Top-level packages and directories (short description):
 - `src/autoencoder_for_labelling/` — Python package with the FastAPI app, routers, services, models and training code.
 - `data/` — datasets (current and uploaded/synthetic). Not tracked in Git.
 - `models/` — saved and current model checkpoints. Not tracked in Git.
-- `results/` — saved label files (JSON).
+- `results/` — saved label files (JSON & npz).
 - `frontend/` — minimal static frontend (HTML/CSS/JS) to interact with the API.
 - `src/tests/` — pytest test-suite for the API and modules.
 - `Makefile`, `pyproject.toml` — development tasks and project metadata.
@@ -142,7 +142,11 @@ Below is a full view of the repository tree showing folders, subfolders and the 
 │   ├── saved/
 │   └── current_model.pth   # (created when training a model)
 ├── results/
-│   └── labels_1761304256.json
+│   ├── labels/
+│   ├── latents/
+│   ├── projections2d/
+│   └── reconstructions/
+│
 ├── src/
 │   ├── autoencoder_for_labelling/
 │   │   ├── data/

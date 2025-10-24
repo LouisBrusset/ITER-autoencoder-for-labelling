@@ -54,9 +54,9 @@ async def get_latent_space(subset: str | None = 'validation', deterministic: boo
         else:
             raise HTTPException(status_code=400, detail=f"Unknown subset '{subset}'. Use 'train', 'validation' or 'all'.")
 
-        # prefer labels saved in results/ if present (labels will refer to global indices)
+        # prefer labels saved in results/labels if present (labels will refer to global indices)
         labels = None
-        results_dir = 'results'
+        results_dir = os.path.join('results', 'labels')
         if os.path.exists(results_dir):
             files = [os.path.join(results_dir, f) for f in os.listdir(results_dir) if f.startswith('labels_') and f.endswith('.json')]
             if files:

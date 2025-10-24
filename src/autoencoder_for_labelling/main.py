@@ -28,7 +28,10 @@ app.add_middleware(
 os.makedirs("data/uploaded", exist_ok=True)
 os.makedirs("data/synthetic", exist_ok=True)
 os.makedirs("models/saved", exist_ok=True)
-os.makedirs("results", exist_ok=True)
+os.makedirs("results/labels", exist_ok=True)
+os.makedirs("results/latents", exist_ok=True)
+os.makedirs("results/projections2d", exist_ok=True)
+os.makedirs("results/reconstructions", exist_ok=True)
 
 app.include_router(data_router.router)
 app.include_router(checking_router.router)

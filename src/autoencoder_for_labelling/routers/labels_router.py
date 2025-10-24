@@ -44,7 +44,7 @@ async def save_labels(payload: LabelsPayload):
                 raise HTTPException(status_code=400, detail=f'Index {idx} is out of range (0..{n-1})')
 
         # Merge with existing labels so saving labels for one subset doesn't reset others
-        results_dir = 'results'
+        results_dir = os.path.join('results', 'labels')
         os.makedirs(results_dir, exist_ok=True)
 
         # start from existing labels if present
@@ -138,7 +138,7 @@ async def export_all_labels():
         else:
             # try to load latest labels file
             try:
-                results_dir = 'results'
+                results_dir = os.path.join('results', 'labels')
                 files = [os.path.join(results_dir, f) for f in os.listdir(results_dir) if f.startswith('labels_') and f.endswith('.json')]
                 if files:
                     latest = max(files, key=os.path.getmtime)
@@ -161,8 +161,8 @@ async def export_all_labels():
 
         out = {'trainset': train_map, 'validationset': val_map}
 
-        # save to results
-        results_dir = 'results'
+        # save to results/labels
+        results_dir = os.path.join('results', 'labels')
         os.makedirs(results_dir, exist_ok=True)
         ts = int(time.time())
         filename = os.path.join(results_dir, f'exported_final_labels_{ts}.json')

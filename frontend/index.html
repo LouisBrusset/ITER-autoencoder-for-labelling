@@ -130,7 +130,7 @@
                 <div class="status">
                     <p>Status: <span id="statusText">Waiting...</span></p>
                     <p>Epoch: <span id="epochText">0</span>/<span id="totalEpochs">0</span></p>
-                    <p>Current Loss: <span id="lossText">0.0000</span></p>
+                    <p>Current Losses: <span id="lossText">0.0000</span></p>
                 </div>
                 <div style="position: relative; height:400px; width:100%;">
                     <canvas id="trainingChart"></canvas>
@@ -150,7 +150,7 @@
 
 
 
-        <!-- SECTION 3 : VISUALIZATION -->
+        <!-- SECTION 4 : VISUALIZATION -->
         <section id="section-visualization" class="section">
             <h2>4. Latent Space Visualization</h2>
 
@@ -179,11 +179,11 @@
                     </div>
                 </div>
                 <button onclick="generateLatentSpace()" class="btn-primary">Generate Visualization</button>
-                <div style="position: relative; height:600px; width:100%;">
-                    <canvas id="latentSpaceChart"></canvas>
-                </div>
                 <div id="pointInfo" class="point-info">
                     Hover over the points to see details.
+                </div>
+                <div style="position: relative; height:600px; width:100%;">
+                    <canvas id="latentSpaceChart"></canvas>
                 </div>
                 <div class="card">
                     <h4>Sample reconstruction</h4>
@@ -223,7 +223,7 @@
                 <button onclick="generateClassificationLatentSpace()" class="btn-primary">Load projection</button>
                 <button onclick="applyClassificationColors()" class="btn-secondary" id="applyLabelsBtn" disabled>Apply new labels</button>
                 <button onclick="saveLabels()" class="btn-success" id="saveLabelsBtn" disabled>Save labels</button>
-                <button onclick="extractAllLabels()" class="btn-success" id="extractAllBtn" style="background-color:rgb(62, 173, 62); color:white">Extract all labels</button>
+                <button onclick="extractAllLabels()" class="btn-success" id="extractAllBtn" style="background-color:rgb(62, 173, 62); color:white">Export all labels</button>
                 <div id="classificationContainer" style="position:relative; height:600px; width:100%;">
                     <canvas id="classificationChart"></canvas>
                     <!-- overlay canvas for drawing selection polygon -->

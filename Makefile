@@ -27,8 +27,13 @@ clean:
 	@rm -rf data/uploaded/* || true
 	@rm -f models/current_model.pth || true
 	@rm -rf models/saved/* || true
+	@echo "Removing results files..."
+	@rm -rf results/labels/* || true
+	@rm -rf results/latents/* || true
+	@rm -rf results/projections2d/* || true
+	@rm -rf results/reconstructions/* || true
 	@echo "Removing coverage files from tests..."
-	@rm -f .coverage || true
+	@rm -rf .coverage || true
 	@rm -rf htmlcov/ || true
 	@rm -rf .pytest_cache/ || true
 	@rm -rf __pycache__/ || true
