@@ -30,6 +30,8 @@ window.initReconstructionChart = function() {
 
 window.generateLatentSpace = async function() {
     try {
+        // update inference status badge on visualization page
+        try { if (window.checkInferenceStatus) await window.checkInferenceStatus(); } catch(e) { /* ignore */ }
         const subset = document.querySelector('input[name="visSubset"]:checked')?.value || 'validation';
         const response = await fetch(`${API_BASE}/latent-space?subset=${encodeURIComponent(subset)}`);
         const data = await response.json();
@@ -96,8 +98,8 @@ window.generateLatentSpace = async function() {
             const px = xScale.getValueForPixel(x);
             const py = yScale.getValueForPixel(y);
 
-            // find nearest in projected (UMAP) space and show nearest sample index
-            let nearestIdx = -1;
+            // find nearest in projected (UMAP) space and show nearest sample index + latent if present
+            let nearestLocal = -1;
             let nearestDistSq = Infinity;
             const allPoints = data.points || [];
             for (let i = 0; i < allPoints.length; i++) {
@@ -106,13 +108,24 @@ window.generateLatentSpace = async function() {
                 const dSq = dx*dx + dy*dy;
                 if (dSq < nearestDistSq) {
                     nearestDistSq = dSq;
-                    nearestIdx = allPoints[i].original_index;
+                    nearestLocal = i;
                 }
             }
-
-            document.getElementById('pointInfo').innerHTML = 
-                `UMAP: (${px.toFixed(3)}, ${py.toFixed(3)})` +
-                (nearestIdx>=0 ? ` | Nearest sample: ${nearestIdx}` : '');
+            let msg = `UMAP: (${px.toFixed(3)}, ${py.toFixed(3)})`;
+            if (nearestLocal >= 0) {
+                const p = allPoints[nearestLocal];
+                msg += ` | Nearest sample: ${p.original_index}`;
+                if (p.label !== undefined && p.label !== null) msg += ` | Label: ${p.label}`;
+                if (p.latent) {
+                    // show first 6 components of latent vector
+                    try {
+                        const latent = Array.isArray(p.latent) ? p.latent : [];
+                        const show = latent.slice(0,6).map(v => Number(v).toFixed(3)).join(', ');
+                        msg += ` | Latent[:6]=[${show}${latent.length>6? ', ...':''}]`;
+                    } catch(e) {}
+                }
+            }
+            document.getElementById('pointInfo').innerHTML = msg;
         };
 
         // click handler: find nearest point and request reconstruction
@@ -132,7 +145,7 @@ window.generateLatentSpace = async function() {
                 const py = yScale.getValueForPixel(y);
 
                 // find nearest in projected (UMAP) space using Euclidean distance
-                let nearestIdx = -1;
+                let nearestLocal = -1;
                 let nearestDistSq = Infinity;
                 const allPoints = data.points || [];
                 for (let i = 0; i < allPoints.length; i++) {
@@ -141,9 +154,10 @@ window.generateLatentSpace = async function() {
                     const dSq = dx*dx + dy*dy;
                     if (dSq < nearestDistSq) {
                         nearestDistSq = dSq;
-                        nearestIdx = allPoints[i].original_index;
+                        nearestLocal = i;
                     }
                 }
+                const nearestIdx = (nearestLocal >= 0) ? allPoints[nearestLocal].original_index : -1;
                 const nearestDist = (nearestDistSq === Infinity) ? Infinity : Math.sqrt(nearestDistSq);
 
                 if (nearestIdx < 0) {
@@ -151,7 +165,7 @@ window.generateLatentSpace = async function() {
                     return;
                 }
 
-                // fetch reconstruction for the selected sample
+                // fetch reconstruction for the selected sample (backend will prefer saved reconstructions if available)
                 const recResp = await fetch(`${API_BASE}/reconstruct?index=${nearestIdx}`);
                 if (!recResp.ok) {
                     const err = await recResp.json().catch(() => ({}));
@@ -196,5 +210,39 @@ window.generateLatentSpace = async function() {
         alert('Error generating latent space');
     }
 };
+
+// Visualization-specific inference status display: reuse training checkInferenceStatus if present,
+// then render into #inferenceStatusViz
+window.checkInferenceStatusViz = async function() {
+    const el = document.getElementById('inferenceStatusViz');
+    if (!el) return;
+    try {
+        // call the shared function to refresh server-side info/UI state
+        if (window.checkInferenceStatus) await window.checkInferenceStatus();
+    } catch (e) {
+        // ignore
+    }
+    try {
+        const resp = await fetch(`${API_BASE}/inference-options`);
+        if (!resp.ok) { el.innerHTML = '<div class="warning">Unable to check inference</div>'; return; }
+        const data = await resp.json();
+        const nLat = (data.latents && data.latents.length) ? data.latents.length : 0;
+        const nProj = (data.projections && data.projections.length) ? data.projections.length : 0;
+        const nRec = (data.reconstructions && data.reconstructions.length) ? data.reconstructions.length : 0;
+        if (nLat > 0 && nProj > 0 && nRec > 0) {
+            el.innerHTML = `<div class="success">Inference available — latents: ${nLat}, projections: ${nProj}, reconstructions: ${nRec}</div>`;
+        } else if (nLat+ nProj + nRec > 0) {
+            el.innerHTML = `<div class="warning">Partial inference artifacts present — latents: ${nLat}, projections: ${nProj}, reconstructions: ${nRec}</div>`;
+        } else {
+            el.innerHTML = '<div class="warning">Inference not run</div>';
+        }
+    } catch (err) {
+        console.error(err);
+        el.innerHTML = '<div class="error">Error checking inference</div>';
+    }
+};
+
+// ensure visualization inference status check on load
+document.addEventListener('DOMContentLoaded', function() { if (window.checkInferenceStatusViz) window.checkInferenceStatusViz(); });
 
 })();

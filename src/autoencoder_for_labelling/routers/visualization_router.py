@@ -54,31 +54,102 @@ async def get_latent_space(subset: str | None = 'validation', deterministic: boo
         else:
             raise HTTPException(status_code=400, detail=f"Unknown subset '{subset}'. Use 'train', 'validation' or 'all'.")
 
-        # prefer labels saved in results/labels if present (labels will refer to global indices)
+        # Determine labels: prefer any labels embedded in saved inference artifacts (projection, latents, reconstructions),
+        # otherwise fall back to dataset labels or zeros.
         labels = None
-        results_dir = os.path.join('results', 'labels')
-        if os.path.exists(results_dir):
-            files = [os.path.join(results_dir, f) for f in os.listdir(results_dir) if f.startswith('labels_') and f.endswith('.json')]
-            if files:
-                latest = max(files, key=os.path.getmtime)
-                try:
-                    import json
-                    with open(latest, 'r') as fh:
-                        payload = json.load(fh)
-                        # payload contains 'label' and 'index' lists — map them into full labels array
-                        if 'label' in payload and 'index' in payload:
-                            full_labels = np.zeros(len(all_data), dtype=int)
-                            for idx, lab in zip(payload['index'], payload['label']):
-                                if 0 <= idx < len(full_labels):
-                                    full_labels[int(idx)] = int(lab)
-                            # extract labels for the chosen working indices
-                            labels = full_labels[working_indices]
-                        else:
-                            labels = None
-                except Exception:
-                    labels = None
+        proj_labels = None
+        latents_labels = None
+        recon_labels = None
+
+        # Try to find latest projection matching dataset and extract labels
+        try:
+            proj_dir = os.path.join('results', 'projections2d')
+            if os.path.exists(proj_dir):
+                pfiles = [os.path.join(proj_dir, f) for f in os.listdir(proj_dir) if f.endswith('.npz')]
+                pmatches = []
+                for pf in pfiles:
+                    try:
+                        meta = np.load(pf, allow_pickle=True)
+                        dsname = str(meta.get('filename',''))
+                        if dsname == str(data.get('filename','current_dataset')):
+                            ts = int(meta.get('timestamp', os.path.getmtime(pf))) if 'timestamp' in meta else int(os.path.getmtime(pf))
+                            pmatches.append((ts, pf))
+                    except Exception:
+                        continue
+                if pmatches:
+                    pmatches.sort(key=lambda x: x[0], reverse=True)
+                    chosen_proj = pmatches[0][1]
+                    try:
+                        meta = np.load(chosen_proj, allow_pickle=True)
+                        if 'labels' in meta:
+                            proj_labels = np.array(meta['labels'])
+                    except Exception:
+                        proj_labels = None
+        except Exception:
+            proj_labels = None
+
+        # Try latents
+        try:
+            lat_dir = os.path.join('results', 'latents')
+            if os.path.exists(lat_dir):
+                lfiles = [os.path.join(lat_dir, f) for f in os.listdir(lat_dir) if f.endswith('.npz')]
+                lmatches = []
+                for lf in lfiles:
+                    try:
+                        lm = np.load(lf, allow_pickle=True)
+                        dsname = str(lm.get('filename',''))
+                        if dsname == str(data.get('filename','current_dataset')):
+                            lts = int(lm.get('timestamp', os.path.getmtime(lf))) if 'timestamp' in lm else int(os.path.getmtime(lf))
+                            lmatches.append((lts, lf))
+                    except Exception:
+                        continue
+                if lmatches:
+                    lmatches.sort(key=lambda x: x[0], reverse=True)
+                    chosen_lat = lmatches[0][1]
+                    try:
+                        lm = np.load(chosen_lat, allow_pickle=True)
+                        if 'labels' in lm:
+                            latents_labels = np.array(lm['labels'])
+                    except Exception:
+                        latents_labels = None
+        except Exception:
+            latents_labels = None
+
+        # Try reconstructions
+        try:
+            recon_dir = os.path.join('results', 'reconstructions')
+            if os.path.exists(recon_dir):
+                rfiles = [os.path.join(recon_dir, f) for f in os.listdir(recon_dir) if f.endswith('.npz')]
+                rmatches = []
+                for rf in rfiles:
+                    try:
+                        rm = np.load(rf, allow_pickle=True)
+                        dsname = str(rm.get('filename',''))
+                        if dsname == str(data.get('filename','current_dataset')):
+                            rts = int(rm.get('timestamp', os.path.getmtime(rf))) if 'timestamp' in rm else int(os.path.getmtime(rf))
+                            rmatches.append((rts, rf))
+                    except Exception:
+                        continue
+                if rmatches:
+                    rmatches.sort(key=lambda x: x[0], reverse=True)
+                    chosen_recon = rmatches[0][1]
+                    try:
+                        rm = np.load(chosen_recon, allow_pickle=True)
+                        if 'labels' in rm:
+                            recon_labels = np.array(rm['labels'])
+                    except Exception:
+                        recon_labels = None
+        except Exception:
+            recon_labels = None
+
+        # select labels in order: projection > latents > recon > dataset
+        if proj_labels is not None:
+            labels = proj_labels[working_indices] if len(proj_labels) == len(all_data) else None
+        if labels is None and latents_labels is not None:
+            labels = latents_labels[working_indices] if len(latents_labels) == len(all_data) else None
+        if labels is None and recon_labels is not None:
+            labels = recon_labels[working_indices] if len(recon_labels) == len(all_data) else None
         if labels is None:
-            # if no results file, prefer labels field from dataset, but only for validation indices
             if 'labels' in data:
                 full_labels = data['labels']
                 labels = full_labels[working_indices]
@@ -97,29 +168,87 @@ async def get_latent_space(subset: str | None = 'validation', deterministic: boo
         model.load_state_dict(state)
         model.eval()
         
-        # Calculate latent space & UMAP projection to 2D
-        with torch.no_grad():
-            latent_representations = model.encoder(dataset).numpy()
-        if deterministic:
-            reducer = umap.UMAP(n_components=2, random_state=42, n_jobs=1)
-        else:
-            reducer = umap.UMAP(n_components=2, init='spectral', n_neighbors=15, n_jobs=-1, random_state=None)
-        latent_2d = reducer.fit_transform(latent_representations)
+        # Calculate latent space & UMAP projection to 2D (reuse saved projection/latents if present)
+        latent_representations = None
+        latent_2d = None
 
-        # Prepare data for Chart.js
+        # attempt to load latest saved projection and latents for this dataset
+        try:
+            proj_dir = os.path.join('results', 'projections2d')
+            chosen_proj = None
+            if os.path.exists(proj_dir):
+                pfiles = [os.path.join(proj_dir, f) for f in os.listdir(proj_dir) if f.endswith('.npz')]
+                pmatches = []
+                for pf in pfiles:
+                    try:
+                        meta = np.load(pf, allow_pickle=True)
+                        dsname = str(meta.get('filename',''))
+                        if dsname == str(data.get('filename','current_dataset')):
+                            ts = int(meta.get('timestamp', os.path.getmtime(pf))) if 'timestamp' in meta else int(os.path.getmtime(pf))
+                            pmatches.append((ts, pf))
+                    except Exception:
+                        continue
+                if pmatches:
+                    pmatches.sort(key=lambda x: x[0], reverse=True)
+                    chosen_proj = pmatches[0][1]
+
+            if chosen_proj is not None:
+                meta = np.load(chosen_proj, allow_pickle=True)
+                if 'data' in meta:
+                    latent_2d = np.array(meta['data'])
+                # try to find matching latents file
+                lat_dir = os.path.join('results', 'latents')
+                if os.path.exists(lat_dir):
+                    lfiles = [os.path.join(lat_dir, f) for f in os.listdir(lat_dir) if f.endswith('.npz')]
+                    lmatches = []
+                    for lf in lfiles:
+                        try:
+                            lm = np.load(lf, allow_pickle=True)
+                            dsname = str(lm.get('filename',''))
+                            if dsname == str(data.get('filename','current_dataset')):
+                                lts = int(lm.get('timestamp', os.path.getmtime(lf))) if 'timestamp' in lm else int(os.path.getmtime(lf))
+                                lmatches.append((lts, lf))
+                        except Exception:
+                            continue
+                    if lmatches:
+                        lmatches.sort(key=lambda x: x[0], reverse=True)
+                        latents_all = np.load(lmatches[0][1], allow_pickle=True)['data']
+                        if latents_all.shape[0] == len(all_data):
+                            latent_representations = latents_all[working_indices]
+        except Exception:
+            latent_representations = None
+            latent_2d = None
+
+        # if no saved projection, compute latent representations and UMAP now
+        if latent_2d is None:
+            with torch.no_grad():
+                latent_representations = model.encoder(dataset).numpy()
+            if deterministic:
+                reducer = umap.UMAP(n_components=2, random_state=42, n_jobs=1)
+            else:
+                reducer = umap.UMAP(n_components=2, init='spectral', n_neighbors=15, n_jobs=-1, random_state=None)
+            latent_2d = reducer.fit_transform(latent_representations)
+
+        # Prepare data for Chart.js, include latent vector if available
         points = []
         for i_local, (x, y) in enumerate(latent_2d):
             global_i = int(working_indices[i_local])
-            points.append({
+            pt = {
                 "x": float(x),
                 "y": float(y),
                 "label": int(labels[i_local]) if i_local < len(labels) else 0,
                 "original_index": global_i
-            })
-        
+            }
+            if latent_representations is not None and i_local < latent_representations.shape[0]:
+                try:
+                    pt['latent'] = latent_representations[i_local].tolist()
+                except Exception:
+                    pt['latent'] = None
+            points.append(pt)
+
         return {
             "points": points,
-            "latent_dim": int(latent_representations.shape[1]),
+            "latent_dim": int(latent_representations.shape[1]) if latent_representations is not None else None,
             "original_dim": int(dataset.shape[1])
         }
     except Exception as e:
@@ -174,29 +303,59 @@ async def reconstruct_sample(index: int = 0, subset: str | None = None):
                 raise HTTPException(status_code=400, detail=f"Index out of range (0..{n_samples-1})")
             global_idx = int(index)
 
-        sample = torch.FloatTensor(all_data[global_idx:global_idx+1])
+        # Try to return reconstruction from latest saved reconstructions file for this dataset
+        reconstruction = None
+        try:
+            recon_dir = os.path.join('results', 'reconstructions')
+            if os.path.exists(recon_dir):
+                rfiles = [os.path.join(recon_dir, f) for f in os.listdir(recon_dir) if f.endswith('.npz')]
+                rmatches = []
+                for rf in rfiles:
+                    try:
+                        rm = np.load(rf, allow_pickle=True)
+                        dsname = str(rm.get('filename',''))
+                        if dsname == str(data.get('filename','current_dataset')):
+                            rts = int(rm.get('timestamp', os.path.getmtime(rf))) if 'timestamp' in rm else int(os.path.getmtime(rf))
+                            rmatches.append((rts, rf))
+                    except Exception:
+                        continue
+                if rmatches:
+                    rmatches.sort(key=lambda x: x[0], reverse=True)
+                    chosen_recon = rmatches[0][1]
+                    try:
+                        rm = np.load(chosen_recon, allow_pickle=True)
+                        if 'data' in rm and int(global_idx) < rm['data'].shape[0]:
+                            reconstruction = rm['data'][int(global_idx)].tolist()
+                    except Exception:
+                        reconstruction = None
+        except Exception:
+            reconstruction = None
 
-        # load model state and instantiate model
-        state = torch.load('models/current_model.pth')
-        encoding_dim = None
-        if isinstance(state, dict) and 'encoder.2.weight' in state:
-            encoding_dim = state['encoder.2.weight'].shape[0]
-        if encoding_dim is None:
-            encoding_dim = 8
+        # Fallback to model reconstruction if saved reconstruction not found
+        if reconstruction is None:
+            sample = torch.FloatTensor(all_data[global_idx:global_idx+1])
 
-        # input dim comes from the full dataset
-        input_dim = all_data.shape[1]
-        model = SimpleAutoencoder(input_dim=input_dim, encoding_dim=encoding_dim)
-        model.load_state_dict(state)
-        model.eval()
+            # load model state and instantiate model
+            state = torch.load('models/current_model.pth')
+            encoding_dim = None
+            if isinstance(state, dict) and 'encoder.2.weight' in state:
+                encoding_dim = state['encoder.2.weight'].shape[0]
+            if encoding_dim is None:
+                encoding_dim = 8
 
-        with torch.no_grad():
-            recon_t = model(sample)
-            reconstructed = recon_t.detach().cpu().numpy()[0]
+            # input dim comes from the full dataset
+            input_dim = all_data.shape[1]
+            model = SimpleAutoencoder(input_dim=input_dim, encoding_dim=encoding_dim)
+            model.load_state_dict(state)
+            model.eval()
+
+            with torch.no_grad():
+                recon_t = model(sample)
+                reconstructed = recon_t.detach().cpu().numpy()[0]
+            reconstruction = reconstructed.tolist()
 
         # original sample from the global dataset
         original = all_data[global_idx].tolist()
-        reconstruction = reconstructed.tolist()
 
         return {
             "index": int(global_idx),

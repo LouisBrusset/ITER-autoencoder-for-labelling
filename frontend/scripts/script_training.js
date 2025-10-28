@@ -116,60 +116,6 @@ window.checkCurrentModel = async function() {
 };
 
 
-window.checkInferenceStatus = async function() {
-    const statusEl = document.getElementById('inferenceStatus');
-    if (!statusEl) return;
-    try {
-        const resp = await fetch(`${API_BASE}/inference-options`);
-        if (!resp.ok) {
-            statusEl.innerHTML = '<div class="warning">Unable to check inference</div>';
-            return;
-        }
-        const data = await resp.json();
-        const nLat = (data.latents && data.latents.length) ? data.latents.length : 0;
-        const nProj = (data.projections && data.projections.length) ? data.projections.length : 0;
-        const nRec = (data.reconstructions && data.reconstructions.length) ? data.reconstructions.length : 0;
-        if (nLat > 0 && nProj > 0 && nRec > 0) {
-            statusEl.innerHTML = `<div class="success">Inference available — latents: ${nLat}, projections: ${nProj}, reconstructions: ${nRec}</div>`;
-        } else if (nLat+ nProj + nRec > 0) {
-            statusEl.innerHTML = `<div class="warning">Partial inference artifacts present — latents: ${nLat}, projections: ${nProj}, reconstructions: ${nRec}</div>`;
-        } else {
-            statusEl.innerHTML = '<div class="warning">Inference not run</div>';
-        }
-    } catch (err) {
-        console.error(err);
-        statusEl.innerHTML = '<div class="error">Error checking inference</div>';
-    }
-};
-
-
-window.runInference = async function() {
-    const btn = document.getElementById('runInferenceBtn');
-    const statusEl = document.getElementById('inferenceStatus');
-    if (!btn || !statusEl) return;
-    try {
-        btn.disabled = true;
-        const det = document.getElementById('inferenceDeterministic')?.checked ? 'true' : 'false';
-        statusEl.innerHTML = '<div class="status">Running inference...</div>';
-        const resp = await fetch(`${API_BASE}/run-inference?deterministic=${det}`, { method: 'POST' });
-        if (!resp.ok) {
-            const err = await resp.json().catch(()=>({}));
-            statusEl.innerHTML = `<div class="error">Inference failed: ${err.detail || resp.statusText}</div>`;
-            btn.disabled = false;
-            return;
-        }
-        const payload = await resp.json();
-        statusEl.innerHTML = `<div class="success">Inference completed. Files saved.</div>`;
-        // refresh status to show counts
-        await window.checkInferenceStatus();
-    } catch (err) {
-        console.error(err);
-        statusEl.innerHTML = `<div class="error">Error running inference</div>`;
-    } finally {
-        if (btn) btn.disabled = false;
-    }
-};
-
 window.startTraining = async function() {
     const epochs = document.getElementById('trainingEpochs').value;
     const learningRate = document.getElementById('learningRate').value;
@@ -269,3 +215,58 @@ window.loadSelectedModel = async function() {
 };
 
 })();
+
+
+window.checkInferenceStatus = async function() {
+    const statusEl = document.getElementById('inferenceStatus');
+    if (!statusEl) return;
+    try {
+        const resp = await fetch(`${API_BASE}/inference-options`);
+        if (!resp.ok) {
+            statusEl.innerHTML = '<div class="warning">Unable to check inference</div>';
+            return;
+        }
+        const data = await resp.json();
+        const nLat = (data.latents && data.latents.length) ? data.latents.length : 0;
+        const nProj = (data.projections && data.projections.length) ? data.projections.length : 0;
+        const nRec = (data.reconstructions && data.reconstructions.length) ? data.reconstructions.length : 0;
+        if (nLat > 0 && nProj > 0 && nRec > 0) {
+            statusEl.innerHTML = `<div class="success">Inference available — latents: ${nLat}, projections: ${nProj}, reconstructions: ${nRec}</div>`;
+        } else if (nLat+ nProj + nRec > 0) {
+            statusEl.innerHTML = `<div class="warning">Partial inference artifacts present — latents: ${nLat}, projections: ${nProj}, reconstructions: ${nRec}</div>`;
+        } else {
+            statusEl.innerHTML = '<div class="warning">Inference not run</div>';
+        }
+    } catch (err) {
+        console.error(err);
+        statusEl.innerHTML = '<div class="error">Error checking inference</div>';
+    }
+};
+
+
+window.runInference = async function() {
+    const btn = document.getElementById('runInferenceBtn');
+    const statusEl = document.getElementById('inferenceStatus');
+    if (!btn || !statusEl) return;
+    try {
+        btn.disabled = true;
+        const det = document.getElementById('inferenceDeterministic')?.checked ? 'true' : 'false';
+        statusEl.innerHTML = '<div class="status">Running inference...</div>';
+        const resp = await fetch(`${API_BASE}/run-inference?deterministic=${det}`, { method: 'POST' });
+        if (!resp.ok) {
+            const err = await resp.json().catch(()=>({}));
+            statusEl.innerHTML = `<div class="error">Inference failed: ${err.detail || resp.statusText}</div>`;
+            btn.disabled = false;
+            return;
+        }
+        const payload = await resp.json();
+        statusEl.innerHTML = `<div class="success">Inference completed. Files saved.</div>`;
+        // refresh status to show counts
+        await window.checkInferenceStatus();
+    } catch (err) {
+        console.error(err);
+        statusEl.innerHTML = `<div class="error">Error running inference</div>`;
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+};
