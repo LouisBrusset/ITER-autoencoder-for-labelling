@@ -244,6 +244,11 @@
                 <div id="classificationInfo" class="point-info">Drag to draw a polygon to select points.</div>
             </div>
         </section>
+
+        <footer class="app-footer">
+            <button id="prevSectionBtn" class="footer-nav-btn" disabled>← Previous</button>
+            <button id="nextSectionBtn" class="footer-nav-btn">Next →</button>
+        </footer>
     </div>
 
 
@@ -256,20 +261,75 @@
     <script src="scripts/script_visualization.js"></script>
     <script src="scripts/script_classification.js"></script>
     <script>
-        // Lightweight bootstrap: wire nav and run DOM initializers if present
+                // Lightweight bootstrap: wire nav and run DOM initializers if present
         document.querySelectorAll('.nav-link').forEach(link => {
             link.addEventListener('click', function(e) {
                 e.preventDefault();
                 const targetId = this.getAttribute('href').substring(1);
-                document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
-                document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-                this.classList.add('active');
-                document.getElementById(targetId).classList.add('active');
-                if (targetId === 'section-classification' && window.syncOverlayToChart) window.syncOverlayToChart();
+                navigateToSection(targetId);
             });
         });
 
+        // Navigation functions for footer buttons
+        function navigateToSection(sectionId) {
+            document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            
+            // Activate the target section and its nav link
+            document.getElementById(sectionId).classList.add('active');
+            document.querySelector(`a[href="#${sectionId}"]`).classList.add('active');
+            
+            // Update footer buttons state
+            updateFooterButtons(sectionId);
+            
+            // Call specific initialization if needed
+            if (sectionId === 'section-classification' && window.syncOverlayToChart) window.syncOverlayToChart();
+            // Scroll to top of page when changing section so the user always
+            // starts at the top of the new view.
+            // Use smooth behavior if supported.
+            try {
+                window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+            } catch (e) {
+                // Fallback for older browsers
+                window.scrollTo(0, 0);
+            }
+        }
+        
+        function updateFooterButtons(currentSectionId) {
+            const sections = [
+                'section-data', 
+                'section-checking', 
+                'section-training', 
+                'section-visualization', 
+                'section-classification'
+            ];
+            
+            const currentIndex = sections.indexOf(currentSectionId);
+            const prevBtn = document.getElementById('prevSectionBtn');
+            const nextBtn = document.getElementById('nextSectionBtn');
+            
+            // Update previous button
+            if (currentIndex > 0) {
+                prevBtn.disabled = false;
+                prevBtn.onclick = () => navigateToSection(sections[currentIndex - 1]);
+            } else {
+                prevBtn.disabled = true;
+                prevBtn.onclick = null;
+            }
+            
+            // Update next button
+            if (currentIndex < sections.length - 1) {
+                nextBtn.disabled = false;
+                nextBtn.onclick = () => navigateToSection(sections[currentIndex + 1]);
+            } else {
+                nextBtn.disabled = true;
+                nextBtn.onclick = null;
+            }
+        }
+
         document.addEventListener('DOMContentLoaded', function() {
+            // Initialize with the first section
+            updateFooterButtons('section-data');
             // Init functions
             if (window.loadDataOptions) loadDataOptions();
             if (window.checkCurrentDataset) checkCurrentDataset();

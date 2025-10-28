@@ -11,11 +11,15 @@ run:
 
 # test: run tests with coverage and generate report
 test:
+	@echo "Cleaning data and models before starting..."
+	@$(MAKE) clean
 	@echo "Running tests with coverage..."
 	@uv run pytest --cov=autoencoder_for_labelling --cov-report=term-missing --cov-report=html
 
 # test-quick: run tests without coverage for faster feedback
 test-quick:
+	@echo "Cleaning data and models before starting..."
+	@$(MAKE) clean
 	@echo "Running tests quickly..."
 	@uv run pytest -v
 
@@ -27,11 +31,13 @@ clean:
 	@rm -rf data/uploaded/* || true
 	@rm -f models/current_model.pth || true
 	@rm -rf models/saved/* || true
+
 	@echo "Removing results files..."
 	@rm -rf results/labels/* || true
 	@rm -rf results/latents/* || true
 	@rm -rf results/projections2d/* || true
 	@rm -rf results/reconstructions/* || true
+
 	@echo "Removing coverage files from tests..."
 	@rm -rf .coverage || true
 	@rm -rf htmlcov/ || true
@@ -40,4 +46,12 @@ clean:
 	@rm -rf */__pycache__/ || true
 	@rm -rf */*/__pycache__/ || true
 	@rm -rf */*/*/__pycache__/ || true
+
 	@echo "Clean complete."
+
+# clean-minimal: remove only some files
+clean-minimal:
+	@echo "Removing dataset and uploaded/synthetic files in data and models"
+	@rm -f data/current_dataset.npz || true
+	@rm -f models/current_model.pth || true
+	@echo "Clean minimal complete."

@@ -4,6 +4,18 @@
     padding: 0;
     box-sizing: border-box;
 }
+/* Theme variables */
+:root {
+    --color-primary: #3498db;
+    --color-primary-hover: #2980b9;
+    --color-secondary: #95a5a6;
+    --color-secondary-hover: #7f8c8d;
+    --footer-disabled: #6c757d;
+}
+/* Enable smooth scrolling for in-page navigation by default */
+html {
+    scroll-behavior: smooth;
+}
 /*Base page appearance*/
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -55,15 +67,9 @@ header h1 {
 /*Navigation hover / active state*/
 .nav-link:hover,
 .nav-link.active {
-    background: #3498db;
+    background: var(--color-primary);
     color: white;
 }
-
-
-
-
-
-
 /*Section container (pages)*/
 .section {
     display: none;
@@ -149,21 +155,21 @@ button {
 }
 /*Primary button*/
 .btn-primary {
-    background: #3498db;
+    background: var(--color-primary);
     color: white;
 }
 /*Primary button hover*/
 .btn-primary:hover {
-    background: #2980b9;
+    background: var(--color-primary-hover);
 }
 /*Secondary button*/
 .btn-secondary {
-    background: #95a5a6;
+    background: var(--color-secondary);
     color: white;
 }
 /*Secondary button hover*/
 .btn-secondary:hover {
-    background: #7f8c8d;
+    background: var(--color-secondary-hover);
 }
 /*Warning / destructive button*/
 .btn-warning {
@@ -282,6 +288,51 @@ Spacing and weight for lines inside the status box.
     margin: 0.5rem 0;
     font-weight: 500;
 }
+
+
+/*Footer to easily navigate between sections*/
+.app-footer {
+    /* Keep footer fixed to bottom but constrain it to the container width
+       by centering and using the same max-width as .container. */
+    position: fixed;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100%;
+    max-width: 1200px; /* match .container */
+    background-color: #f8f9fa;
+    border-top: 1px solid #dee2e6;
+    padding: 10px 20px;
+    display: flex;
+    justify-content: space-between;
+    z-index: 1000;
+}
+.footer-nav-btn {
+    /* Reuse primary button color and basic button sizing while keeping
+       this class specifically for footer layout. */
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.2s;
+    background: var(--color-primary);
+    color: white;
+    border: none;
+}
+.footer-nav-btn:hover:not(:disabled) {
+    background: var(--color-primary-hover);
+}
+.footer-nav-btn:disabled {
+    background: var(--footer-disabled);
+    cursor: not-allowed;
+}
+/*Ensure main container has space above footer*/
+.container {
+    padding-bottom: 60px;
+}
+
+
+
 
 
 
