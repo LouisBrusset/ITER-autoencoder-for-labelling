@@ -219,42 +219,114 @@ window.loadSelectedModel = async function() {
 
 
 window.checkInferenceStatus = async function() {
-    const statusEl = document.getElementById('inferenceStatus');
-    if (!statusEl) return;
-    try {
-        // First ask which current_* files are loaded
-        const curResp = await fetch(`${API_BASE}/current-inference`);
-        if (curResp.ok) {
-            const cur = await curResp.json();
-            if (cur.loaded) {
-                    // Build human friendly label from whichever current file is present
-                    const meta = cur.projection2d || cur.latents || cur.reconstructions || null;
-                    const parts = [];
-                    if (meta && meta.dataset) parts.push(`dataset ${meta.dataset}`);
-                    if (meta && meta.timestamp) parts.push(`ts ${new Date(meta.timestamp*1000).toLocaleString()}`);
-                    statusEl.innerHTML = `<div class="success">Inference loaded — ${parts.join(' • ')}</div>`;
-                } else {
-                // fallback to counts from inference-options
-                const resp = await fetch(`${API_BASE}/inference-options`);
-                if (!resp.ok) { statusEl.innerHTML = '<div class="warning">Unable to check inference</div>'; return; }
-                const data = await resp.json();
-                const nLat = (data.latents && data.latents.length) ? data.latents.length : 0;
-                const nProj = (data.projections && data.projections.length) ? data.projections.length : 0;
-                const nRec = (data.reconstructions && data.reconstructions.length) ? data.reconstructions.length : 0;
-                if (nLat > 0 && nProj > 0 && nRec > 0) {
-                    statusEl.innerHTML = `<div class="success">Inference available — latents: ${nLat}, projections: ${nProj}, reconstructions: ${nRec}</div>`;
-                } else if (nLat+ nProj + nRec > 0) {
-                    statusEl.innerHTML = `<div class="warning">Partial inference artifacts present — latents: ${nLat}, projections: ${nProj}, reconstructions: ${nRec}</div>`;
-                } else {
-                    statusEl.innerHTML = '<div class="warning">Inference not run</div>';
-                }
+    const trainingEl = document.getElementById('inferenceStatus');
+    const actionEl = document.getElementById('inferenceActionStatus');
+    const vizEl = document.getElementById('inferenceStatusViz');
+    const classEl = document.getElementById('classificationInferenceStatus');
+
+    // simple debounce / coalescing: avoid firing multiple fetches in parallel or too frequently
+    if (!window._inferenceStatus) window._inferenceStatus = { inFlight: false, lastTs: 0, ttl: 1500, lastOptions: null, lastCurrent: null };
+    const now = Date.now();
+    if (window._inferenceStatus.inFlight) {
+        // another caller is already refreshing; reuse last known values if available
+        if (window._inferenceStatus.lastOptions) {
+            const data = window._inferenceStatus.lastOptions;
+            const nLat = (data.latents && data.latents.length) ? data.latents.length : 0;
+            const nProj = (data.projections && data.projections.length) ? data.projections.length : 0;
+            const nRec = (data.reconstructions && data.reconstructions.length) ? data.reconstructions.length : 0;
+            if (nLat + nProj + nRec > 0) {
+                if (trainingEl) trainingEl.innerHTML = `<div class="success">Inference run — latents: ${nLat}, projections: ${nProj}, reconstructions: ${nRec}</div>`;
+            } else {
+                if (trainingEl) trainingEl.innerHTML = '<div class="warning">Inference not run</div>';
             }
+        }
+        return;
+    }
+    if (now - window._inferenceStatus.lastTs < window._inferenceStatus.ttl) {
+        // recent check already done; populate UI from cache and skip network
+        const data = window._inferenceStatus.lastOptions;
+        if (data && trainingEl) {
+            const nLat = (data.latents && data.latents.length) ? data.latents.length : 0;
+            const nProj = (data.projections && data.projections.length) ? data.projections.length : 0;
+            const nRec = (data.reconstructions && data.reconstructions.length) ? data.reconstructions.length : 0;
+            if (nLat + nProj + nRec > 0) trainingEl.innerHTML = `<div class="success">Inference run — latents: ${nLat}, projections: ${nProj}, reconstructions: ${nRec}</div>`;
+            else trainingEl.innerHTML = '<div class="warning">Inference not run</div>';
+        }
+        // Also apply last current into other UI pieces
+        const cur = window._inferenceStatus.lastCurrent;
+        if (cur) {
+            const s = cur.loaded ? `<div class="success">Inference loaded — ${cur.projection2d?.dataset || cur.latents?.dataset || cur.reconstructions?.dataset || ''} • ts ${cur.projection2d?.timestamp || cur.latents?.timestamp || cur.reconstructions?.timestamp || ''}</div>` : '<div class="warning">No inference loaded</div>';
+            if (actionEl) actionEl.innerHTML = s;
+            if (vizEl) vizEl.innerHTML = s;
+            if (classEl) classEl.innerHTML = s;
+        }
+        return;
+    }
+    window._inferenceStatus.inFlight = true;
+
+    // 1) Check whether an inference has been run (saved artifacts exist)
+    try {
+        const resp = await fetch(`${API_BASE}/inference-options`);
+        if (!resp.ok) {
+            if (trainingEl) trainingEl.innerHTML = '<div class="error">Error checking inference</div>';
         } else {
-            statusEl.innerHTML = '<div class="warning">Unable to check current inference</div>';
+            const data = await resp.json();
+            // cache options
+            window._inferenceStatus.lastOptions = data;
+            window._inferenceStatus.lastTs = Date.now();
+            const nLat = (data.latents && data.latents.length) ? data.latents.length : 0;
+            const nProj = (data.projections && data.projections.length) ? data.projections.length : 0;
+            const nRec = (data.reconstructions && data.reconstructions.length) ? data.reconstructions.length : 0;
+            if (nLat + nProj + nRec > 0) {
+                if (trainingEl) trainingEl.innerHTML = `<div class="success">Inference run — latents: ${nLat}, projections: ${nProj}, reconstructions: ${nRec}</div>`;
+            } else {
+                if (trainingEl) trainingEl.innerHTML = '<div class="warning">Inference not run</div>';
+            }
         }
     } catch (err) {
-        console.error(err);
-        statusEl.innerHTML = '<div class="error">Error checking inference</div>';
+        console.error('Error fetching inference-options', err);
+        if (trainingEl) trainingEl.innerHTML = '<div class="error">No response checking inference</div>';
+    }
+
+    // 2) Check which inference (if any) is currently loaded and update Available/Visualization/Classification
+    try {
+        const curResp = await fetch(`${API_BASE}/current-inference`);
+        if (!curResp.ok) {
+            const msg = '<div class="error">Unable to check current inference</div>';
+            if (actionEl) actionEl.innerHTML = msg;
+            if (vizEl) vizEl.innerHTML = msg;
+            if (classEl) classEl.innerHTML = msg;
+            window._inferenceStatus.lastCurrent = null;
+            return;
+        }
+        const cur = await curResp.json();
+        // cache current
+        window._inferenceStatus.lastCurrent = cur;
+        if (cur.loaded) {
+            const meta = cur.projection2d || cur.latents || cur.reconstructions || null;
+            const parts = [];
+            if (meta && meta.dataset) parts.push(`dataset ${meta.dataset}`);
+            if (meta && meta.timestamp) parts.push(`ts ${new Date(meta.timestamp*1000).toLocaleString()}`);
+            const s = `<div class="success">Inference loaded — ${parts.join(' • ')}</div>`;
+            if (actionEl) actionEl.innerHTML = s;
+            if (vizEl) vizEl.innerHTML = s;
+            if (classEl) classEl.innerHTML = s;
+        } else {
+            const w = '<div class="warning">No inference loaded</div>';
+            if (actionEl) actionEl.innerHTML = w;
+            if (vizEl) vizEl.innerHTML = w;
+            if (classEl) classEl.innerHTML = w;
+        }
+    } catch (err) {
+        console.error('Error fetching current-inference', err);
+        const msg = '<div class="error">Error checking current inference</div>';
+        const actionEl2 = document.getElementById('inferenceActionStatus');
+        if (actionEl2) actionEl2.innerHTML = msg;
+        if (vizEl) vizEl.innerHTML = msg;
+        if (classEl) classEl.innerHTML = msg;
+        window._inferenceStatus.lastCurrent = null;
+    } finally {
+        window._inferenceStatus.inFlight = false;
     }
 };
 
@@ -277,7 +349,9 @@ window.runInference = async function() {
         const payload = await resp.json();
         statusEl.innerHTML = `<div class="success">Inference completed. Files saved.</div>`;
         // refresh status to show counts
-        await window.checkInferenceStatus();
+    await window.checkInferenceStatus();
+    // update the available inference list now that new artifacts exist
+    if (window.loadInferenceOptions) await window.loadInferenceOptions();
     } catch (err) {
         console.error(err);
         statusEl.innerHTML = `<div class="error">Error running inference</div>`;

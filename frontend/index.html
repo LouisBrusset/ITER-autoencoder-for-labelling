@@ -162,7 +162,6 @@
                 <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
                     <button onclick="loadSelectedInference()" class="btn-secondary">Load Selected Inference</button>
                     <button onclick="deleteSelectedInference()" class="btn-warning">Delete Selected Inference</button>
-                    <button onclick="refreshInferenceOptions()" class="btn-primary">Refresh list</button>
                 </div>
                 <div id="inferenceActionStatus" class="status-info" style="margin-top:6px">No inference loaded</div>
             </div>
@@ -232,6 +231,11 @@
             <div class="card">
                 <h3>Model Information</h3>
                 <div id="classificationModelInfo" class="status-info">No model loaded for classification</div>
+            </div>
+
+            <div class="card">
+                <h3>Inference Status</h3>
+                <div id="classificationInferenceStatus" class="status-info">Inference not checked</div>
             </div>
 
             <div class="card">

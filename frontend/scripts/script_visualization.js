@@ -217,16 +217,15 @@ window.checkInferenceStatusViz = async function() {
     const el = document.getElementById('inferenceStatusViz');
     if (!el) return;
     try {
-        // call the shared function to refresh server-side info/UI state
+        // call the shared function to refresh server-side info/UI state (it is debounced)
         if (window.checkInferenceStatus) await window.checkInferenceStatus();
     } catch (e) {
         // ignore
     }
     try {
-        // Prefer showing which current_* files are loaded
-        const curResp = await fetch(`${API_BASE}/current-inference`);
-        if (curResp.ok) {
-            const cur = await curResp.json();
+        // reuse cached current-inference result when available to avoid extra fetches
+        const cur = (window._inferenceStatus && window._inferenceStatus.lastCurrent) ? window._inferenceStatus.lastCurrent : null;
+        if (cur) {
             if (cur.loaded) {
                 const parts = [];
                 if (cur.projection2d && cur.projection2d.dataset) parts.push(cur.projection2d.dataset);
@@ -236,7 +235,8 @@ window.checkInferenceStatusViz = async function() {
                 el.innerHTML = '<div class="warning">Inference not loaded</div>';
             }
         } else {
-            el.innerHTML = '<div class="warning">Unable to check inference</div>';
+            // fallback message when no cached info is present (shared check already attempted)
+            el.innerHTML = '<div class="warning">Inference not loaded</div>';
         }
     } catch (err) {
         console.error(err);
