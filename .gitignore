@@ -38,9 +38,16 @@ data/**/*.npy
 data/**/*.pt
 data/**/*.csv
 data/**/*.npz
+
+notebooks/*.nc
 ## But keep this specific file
 
 # User generated files
 ## Model parameters
 models/**/*.pth
 models/**/*.h5
+models/**/*.pt
+
+results/**/*.json
+results/**/*.npz
+results/*.npz
