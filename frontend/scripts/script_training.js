@@ -58,6 +58,7 @@ window.loadModelOptions = async function() {
     }
 };
 
+
 window.deleteModel = async function(modelFilename) {
     if (!confirm(`Are you sure you want to delete model ${modelFilename}?`)) {
         return;
@@ -221,21 +222,35 @@ window.checkInferenceStatus = async function() {
     const statusEl = document.getElementById('inferenceStatus');
     if (!statusEl) return;
     try {
-        const resp = await fetch(`${API_BASE}/inference-options`);
-        if (!resp.ok) {
-            statusEl.innerHTML = '<div class="warning">Unable to check inference</div>';
-            return;
-        }
-        const data = await resp.json();
-        const nLat = (data.latents && data.latents.length) ? data.latents.length : 0;
-        const nProj = (data.projections && data.projections.length) ? data.projections.length : 0;
-        const nRec = (data.reconstructions && data.reconstructions.length) ? data.reconstructions.length : 0;
-        if (nLat > 0 && nProj > 0 && nRec > 0) {
-            statusEl.innerHTML = `<div class="success">Inference available — latents: ${nLat}, projections: ${nProj}, reconstructions: ${nRec}</div>`;
-        } else if (nLat+ nProj + nRec > 0) {
-            statusEl.innerHTML = `<div class="warning">Partial inference artifacts present — latents: ${nLat}, projections: ${nProj}, reconstructions: ${nRec}</div>`;
+        // First ask which current_* files are loaded
+        const curResp = await fetch(`${API_BASE}/current-inference`);
+        if (curResp.ok) {
+            const cur = await curResp.json();
+            if (cur.loaded) {
+                    // Build human friendly label from whichever current file is present
+                    const meta = cur.projection2d || cur.latents || cur.reconstructions || null;
+                    const parts = [];
+                    if (meta && meta.dataset) parts.push(`dataset ${meta.dataset}`);
+                    if (meta && meta.timestamp) parts.push(`ts ${new Date(meta.timestamp*1000).toLocaleString()}`);
+                    statusEl.innerHTML = `<div class="success">Inference loaded — ${parts.join(' • ')}</div>`;
+                } else {
+                // fallback to counts from inference-options
+                const resp = await fetch(`${API_BASE}/inference-options`);
+                if (!resp.ok) { statusEl.innerHTML = '<div class="warning">Unable to check inference</div>'; return; }
+                const data = await resp.json();
+                const nLat = (data.latents && data.latents.length) ? data.latents.length : 0;
+                const nProj = (data.projections && data.projections.length) ? data.projections.length : 0;
+                const nRec = (data.reconstructions && data.reconstructions.length) ? data.reconstructions.length : 0;
+                if (nLat > 0 && nProj > 0 && nRec > 0) {
+                    statusEl.innerHTML = `<div class="success">Inference available — latents: ${nLat}, projections: ${nProj}, reconstructions: ${nRec}</div>`;
+                } else if (nLat+ nProj + nRec > 0) {
+                    statusEl.innerHTML = `<div class="warning">Partial inference artifacts present — latents: ${nLat}, projections: ${nProj}, reconstructions: ${nRec}</div>`;
+                } else {
+                    statusEl.innerHTML = '<div class="warning">Inference not run</div>';
+                }
+            }
         } else {
-            statusEl.innerHTML = '<div class="warning">Inference not run</div>';
+            statusEl.innerHTML = '<div class="warning">Unable to check current inference</div>';
         }
     } catch (err) {
         console.error(err);
@@ -268,5 +283,159 @@ window.runInference = async function() {
         statusEl.innerHTML = `<div class="error">Error running inference</div>`;
     } finally {
         if (btn) btn.disabled = false;
+    }
+};
+
+
+window.refreshInferenceOptions = async function() {
+    // alias
+    if (window.loadInferenceOptions) return loadInferenceOptions();
+};
+
+window.loadInferenceOptions = async function() {
+    try {
+        const resp = await fetch(`${API_BASE}/inference-options`);
+        if (!resp.ok) {
+            document.getElementById('inferenceOptions').innerHTML = '<div class="warning">Unable to load inference list</div>';
+            return;
+        }
+        const data = await resp.json();
+
+        // Group artifacts by (timestamp + dataset) to form triplets
+        const groups = {}; // key -> { timestamp, dataset, latents, projection, reconstructions }
+
+        function addToGroup(item, type) {
+            if (!item || !item.timestamp) return;
+            const key = `${item.timestamp}__${item.dataset || ''}`;
+            if (!groups[key]) groups[key] = { timestamp: item.timestamp, dataset: item.dataset || '', latents: null, projection: null, reconstructions: null };
+            if (type === 'latents') groups[key].latents = item.file;
+            if (type === 'projection') groups[key].projection = item.file;
+            if (type === 'reconstructions') groups[key].reconstructions = item.file;
+        }
+
+        (data.latents || []).forEach(i => addToGroup(i, 'latents'));
+        (data.projections || []).forEach(i => addToGroup(i, 'projection'));
+        (data.reconstructions || []).forEach(i => addToGroup(i, 'reconstructions'));
+
+        // Build html: one radio per triplet
+        let html = '';
+        if (Object.keys(groups).length === 0) {
+            html = '<div class="small muted">No inference artifacts available</div>';
+        } else {
+            html = '<div class="inference-triplets">';
+            // sort by timestamp desc
+            const sorted = Object.values(groups).sort((a,b) => b.timestamp - a.timestamp);
+            sorted.forEach(g => {
+                const label = `${g.timestamp} — ${g.dataset || 'unknown dataset'}`;
+                const payload = encodeURIComponent(JSON.stringify({ latents: g.latents, projection: g.projection, reconstructions: g.reconstructions, dataset: g.dataset, timestamp: g.timestamp }));
+                html += `<div class="file-item">
+                    <label style="display:flex; gap:8px; align-items:center;">
+                        <input type="radio" name="inferenceTriplet" value="${payload}">
+                        <strong>${label}</strong>
+                    </label>
+                    <div class="small muted">`;
+                html += `Latents: ${g.latents ? g.latents.split('/').pop() : '<em>missing</em>'} • `;
+                html += `Projection2D: ${g.projection ? g.projection.split('/').pop() : '<em>missing</em>'} • `;
+                html += `Reconstructions: ${g.reconstructions ? g.reconstructions.split('/').pop() : '<em>missing</em>'}`;
+                html += `</div>`;
+                html += `<div style="margin-top:6px; display:flex; gap:8px;">
+                    ${g.latents ? `<button onclick="deleteInference('${g.latents.replace(/"/g,'&quot;')}')" class="btn-small">Delete latents</button>` : ''}
+                    ${g.projection ? `<button onclick="deleteInference('${g.projection.replace(/"/g,'&quot;')}')" class="btn-small">Delete projection</button>` : ''}
+                    ${g.reconstructions ? `<button onclick="deleteInference('${g.reconstructions.replace(/"/g,'&quot;')}')" class="btn-small">Delete reconstructions</button>` : ''}
+                </div>`;
+                html += `</div>`;
+            });
+            html += '</div>';
+        }
+
+        document.getElementById('inferenceOptions').innerHTML = html;
+        if (window.checkInferenceStatus) window.checkInferenceStatus();
+    } catch (err) {
+        console.error(err);
+        document.getElementById('inferenceOptions').innerHTML = '<div class="error">Error loading inference options</div>';
+    }
+};
+
+window.loadSelectedInference = async function() {
+    const sel = document.querySelector('input[name="inferenceTriplet"]:checked');
+    if (!sel) {
+        alert('Please select an inference triplet to load');
+        return;
+    }
+    try {
+        const obj = JSON.parse(decodeURIComponent(sel.value));
+        const params = new URLSearchParams();
+        if (obj.latents) params.append('latents_file', obj.latents);
+        if (obj.projection) params.append('projection_file', obj.projection);
+        if (obj.reconstructions) params.append('reconstructions_file', obj.reconstructions);
+
+        const resp = await fetch(`${API_BASE}/load-inference?${params.toString()}`, { method: 'POST' });
+        if (!resp.ok) {
+            const err = await resp.json().catch(()=>({}));
+            alert('Failed to load inference: ' + (err.detail || resp.statusText));
+            return;
+        }
+        document.getElementById('inferenceActionStatus').innerHTML = `<div class="success">Inference loaded</div>`;
+        if (window.checkInferenceStatus) window.checkInferenceStatus();
+        if (window.loadInferenceOptions) window.loadInferenceOptions();
+        // notify visualization/classification that new current_* files exist
+        if (window.generateLatentSpace) {
+            try { /* no-op: modules should check for current files when run */ } catch(e){}
+        }
+    } catch (err) {
+        console.error(err);
+        alert('Error loading inference');
+    }
+};
+
+window.deleteSelectedInference = async function() {
+    const sel = document.querySelector('input[name="inferenceTriplet"]:checked');
+    if (!sel) {
+        alert('Please select an inference triplet to delete');
+        return;
+    }
+    if (!confirm('Delete the selected inference triplet (this will remove all three files)?')) return;
+    try {
+        const obj = JSON.parse(decodeURIComponent(sel.value));
+        const files = [];
+        if (obj.latents) files.push(obj.latents);
+        if (obj.projection) files.push(obj.projection);
+        if (obj.reconstructions) files.push(obj.reconstructions);
+
+        for (const f of files) {
+            const url = `${API_BASE}/delete-inference?file_path=${encodeURIComponent(f)}`;
+            const resp = await fetch(url, { method: 'DELETE' });
+            if (!resp.ok) {
+                const err = await resp.json().catch(()=>({}));
+                alert('Failed to delete ' + (f.split('/').pop()) + ': ' + (err.detail || resp.statusText));
+                // continue trying to delete others
+            }
+        }
+        alert('Selected inference triplet deleted (where possible)');
+        if (window.loadInferenceOptions) window.loadInferenceOptions();
+        if (window.checkInferenceStatus) window.checkInferenceStatus();
+    } catch (err) {
+        console.error(err);
+        alert('Error deleting inference triplet');
+    }
+};
+
+window.deleteInference = async function(filePath) {
+    if (!confirm(`Are you sure you want to delete ${filePath.split('/').pop()}?`)) return;
+    try {
+        const url = `${API_BASE}/delete-inference?file_path=${encodeURIComponent(filePath)}`;
+        const resp = await fetch(url, { method: 'DELETE' });
+        if (!resp.ok) {
+            const err = await resp.json().catch(()=>({}));
+            alert('Failed to delete inference: ' + (err.detail || resp.statusText));
+            return;
+        }
+        const r = await resp.json();
+        alert(`Deleted: ${r.file || filePath}`);
+        if (window.loadInferenceOptions) window.loadInferenceOptions();
+        if (window.checkInferenceStatus) window.checkInferenceStatus();
+    } catch (err) {
+        console.error(err);
+        alert('Error deleting inference');
     }
 };

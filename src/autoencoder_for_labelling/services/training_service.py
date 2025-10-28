@@ -130,21 +130,23 @@ async def perform_full_inference(deterministic: bool = True) -> dict:
     recon_fname = os.path.join(recon_dir, f'reconstructions_{ts}_{dataset_filename}.npz')
 
     # Save in dataset-like structure: key 'data' holds the array
-    latents_save = {'data': latents, 'latent_dim': latents.shape[1], 'timestamp': ts, 'filename': dataset_filename}
+    # record indices so that saved files can be unambiguously mapped to dataset global indices
+    indices = np.arange(n_samples, dtype=int)
+    latents_save = {'data': latents, 'latent_dim': latents.shape[1], 'timestamp': ts, 'filename': dataset_filename, 'indices': indices}
     if labels is not None:
         latents_save['labels'] = labels
     if is_train is not None:
         latents_save['is_train'] = is_train
     np.savez_compressed(latents_fname, **latents_save)
 
-    proj_save = {'data': projection2d, 'timestamp': ts, 'filename': dataset_filename}
+    proj_save = {'data': projection2d, 'timestamp': ts, 'filename': dataset_filename, 'indices': indices}
     if labels is not None:
         proj_save['labels'] = labels
     if is_train is not None:
         proj_save['is_train'] = is_train
     np.savez_compressed(proj_fname, **proj_save)
 
-    recon_save = {'data': reconstructions, 'timestamp': ts, 'filename': dataset_filename}
+    recon_save = {'data': reconstructions, 'timestamp': ts, 'filename': dataset_filename, 'indices': indices}
     if labels is not None:
         recon_save['labels'] = labels
     if is_train is not None:

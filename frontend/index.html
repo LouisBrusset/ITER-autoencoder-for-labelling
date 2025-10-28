@@ -146,6 +146,7 @@
                     No model loaded
                 </div>
             </div>
+
             <div class="card">
                 <h3>Inference</h3>
                 <div style="margin-bottom:8px;">
@@ -153,6 +154,17 @@
                 </div>
                 <button onclick="runInference()" class="btn-success" id="runInferenceBtn" style="background-color:rgb(62, 173, 62); color:white">Inference</button>
                 <div id="inferenceStatus" class="status-info">Inference not run</div>
+            </div>
+
+            <div class="card">
+                <h3>Available Inference</h3>
+                <div id="inferenceOptions">Loading available inference...</div>
+                <div style="margin-top:8px; display:flex; gap:8px; align-items:center;">
+                    <button onclick="loadSelectedInference()" class="btn-secondary">Load Selected Inference</button>
+                    <button onclick="deleteSelectedInference()" class="btn-warning">Delete Selected Inference</button>
+                    <button onclick="refreshInferenceOptions()" class="btn-primary">Refresh list</button>
+                </div>
+                <div id="inferenceActionStatus" class="status-info" style="margin-top:6px">No inference loaded</div>
             </div>
         </section>
 
@@ -190,7 +202,7 @@
                         <label><input type="radio" name="visSubset" value="all"> All</label>
                     </div>
                 </div>
-                <button onclick="generateLatentSpace()" class="btn-primary">Generate Visualization</button>
+                <button onclick="generateLatentSpace()" class="btn-primary">Load Visualization</button>
                 <div id="pointInfo" class="point-info">
                     Hover over the points to see details.
                 </div>
@@ -232,7 +244,7 @@
                         <label><input type="radio" name="classSubset" value="all"> All</label>
                     </div>
                 </div>
-                <button onclick="generateClassificationLatentSpace()" class="btn-primary">Load projection</button>
+                <button onclick="generateClassificationLatentSpace()" class="btn-primary">Load Projections</button>
                 <button onclick="applyClassificationColors()" class="btn-secondary" id="applyLabelsBtn" disabled>Apply new labels</button>
                 <button onclick="saveLabels()" class="btn-success" id="saveLabelsBtn" disabled>Save labels</button>
                 <button onclick="extractAllLabels()" class="btn-success" id="extractAllBtn" style="background-color:rgb(62, 173, 62); color:white">Export all labels</button>
@@ -335,6 +347,8 @@
             if (window.checkCurrentDataset) checkCurrentDataset();
             if (window.loadModelOptions) loadModelOptions();
             if (window.checkCurrentModel) checkCurrentModel();
+            if (window.loadInferenceOptions) loadInferenceOptions();
+            if (window.checkInferenceStatus) checkInferenceStatus();
             if (window.initTrainingChart) initTrainingChart();
             if (window.initLatentSpaceChart) initLatentSpaceChart();
             if (window.initReconstructionChart) initReconstructionChart();

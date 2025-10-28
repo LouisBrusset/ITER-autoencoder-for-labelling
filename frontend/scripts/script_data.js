@@ -1,6 +1,6 @@
 (function(){
-// Data-related functions extracted from index.html
 const API_BASE = window.API_BASE || "http://localhost:8000";
+
 window.loadDataOptions = async function() {
     try {
         const response = await fetch(`${API_BASE}/data-options`);
@@ -148,9 +148,11 @@ window.uploadData = async function() {
             body: formData
         });
         const result = await response.json();
+
         document.getElementById('uploadStatus').innerHTML = 
             `<div class="success">Uploaded file: ${result.filename}</div>`;
         loadDataOptions();
+
     } catch (error) {
         console.error('Error:', error);
         document.getElementById('uploadStatus').innerHTML = 

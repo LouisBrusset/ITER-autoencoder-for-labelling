@@ -37,6 +37,7 @@ clean:
 	@rm -rf results/latents/* || true
 	@rm -rf results/projections2d/* || true
 	@rm -rf results/reconstructions/* || true
+	@rm -f results/current_*.npz || true
 
 	@echo "Removing coverage files from tests..."
 	@rm -rf .coverage || true
@@ -54,4 +55,5 @@ clean-minimal:
 	@echo "Removing dataset and uploaded/synthetic files in data and models"
 	@rm -f data/current_dataset.npz || true
 	@rm -f models/current_model.pth || true
+	@rm -f results/current_*.npz || true
 	@echo "Clean minimal complete."

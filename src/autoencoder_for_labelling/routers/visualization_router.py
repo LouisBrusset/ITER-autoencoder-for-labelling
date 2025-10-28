@@ -54,180 +54,69 @@ async def get_latent_space(subset: str | None = 'validation', deterministic: boo
         else:
             raise HTTPException(status_code=400, detail=f"Unknown subset '{subset}'. Use 'train', 'validation' or 'all'.")
 
-        # Determine labels: prefer any labels embedded in saved inference artifacts (projection, latents, reconstructions),
-        # otherwise fall back to dataset labels or zeros.
+        # Determine labels and latent/projection data strictly from the "current_*" files.
+        # If any current file is missing or incompatible with the requested subset, return an error.
         labels = None
-        proj_labels = None
-        latents_labels = None
-        recon_labels = None
-
-        # Try to find latest projection matching dataset and extract labels
-        try:
-            proj_dir = os.path.join('results', 'projections2d')
-            if os.path.exists(proj_dir):
-                pfiles = [os.path.join(proj_dir, f) for f in os.listdir(proj_dir) if f.endswith('.npz')]
-                pmatches = []
-                for pf in pfiles:
-                    try:
-                        meta = np.load(pf, allow_pickle=True)
-                        dsname = str(meta.get('filename',''))
-                        if dsname == str(data.get('filename','current_dataset')):
-                            ts = int(meta.get('timestamp', os.path.getmtime(pf))) if 'timestamp' in meta else int(os.path.getmtime(pf))
-                            pmatches.append((ts, pf))
-                    except Exception:
-                        continue
-                if pmatches:
-                    pmatches.sort(key=lambda x: x[0], reverse=True)
-                    chosen_proj = pmatches[0][1]
-                    try:
-                        meta = np.load(chosen_proj, allow_pickle=True)
-                        if 'labels' in meta:
-                            proj_labels = np.array(meta['labels'])
-                    except Exception:
-                        proj_labels = None
-        except Exception:
-            proj_labels = None
-
-        # Try latents
-        try:
-            lat_dir = os.path.join('results', 'latents')
-            if os.path.exists(lat_dir):
-                lfiles = [os.path.join(lat_dir, f) for f in os.listdir(lat_dir) if f.endswith('.npz')]
-                lmatches = []
-                for lf in lfiles:
-                    try:
-                        lm = np.load(lf, allow_pickle=True)
-                        dsname = str(lm.get('filename',''))
-                        if dsname == str(data.get('filename','current_dataset')):
-                            lts = int(lm.get('timestamp', os.path.getmtime(lf))) if 'timestamp' in lm else int(os.path.getmtime(lf))
-                            lmatches.append((lts, lf))
-                    except Exception:
-                        continue
-                if lmatches:
-                    lmatches.sort(key=lambda x: x[0], reverse=True)
-                    chosen_lat = lmatches[0][1]
-                    try:
-                        lm = np.load(chosen_lat, allow_pickle=True)
-                        if 'labels' in lm:
-                            latents_labels = np.array(lm['labels'])
-                    except Exception:
-                        latents_labels = None
-        except Exception:
-            latents_labels = None
-
-        # Try reconstructions
-        try:
-            recon_dir = os.path.join('results', 'reconstructions')
-            if os.path.exists(recon_dir):
-                rfiles = [os.path.join(recon_dir, f) for f in os.listdir(recon_dir) if f.endswith('.npz')]
-                rmatches = []
-                for rf in rfiles:
-                    try:
-                        rm = np.load(rf, allow_pickle=True)
-                        dsname = str(rm.get('filename',''))
-                        if dsname == str(data.get('filename','current_dataset')):
-                            rts = int(rm.get('timestamp', os.path.getmtime(rf))) if 'timestamp' in rm else int(os.path.getmtime(rf))
-                            rmatches.append((rts, rf))
-                    except Exception:
-                        continue
-                if rmatches:
-                    rmatches.sort(key=lambda x: x[0], reverse=True)
-                    chosen_recon = rmatches[0][1]
-                    try:
-                        rm = np.load(chosen_recon, allow_pickle=True)
-                        if 'labels' in rm:
-                            recon_labels = np.array(rm['labels'])
-                    except Exception:
-                        recon_labels = None
-        except Exception:
-            recon_labels = None
-
-        # select labels in order: projection > latents > recon > dataset
-        if proj_labels is not None:
-            labels = proj_labels[working_indices] if len(proj_labels) == len(all_data) else None
-        if labels is None and latents_labels is not None:
-            labels = latents_labels[working_indices] if len(latents_labels) == len(all_data) else None
-        if labels is None and recon_labels is not None:
-            labels = recon_labels[working_indices] if len(recon_labels) == len(all_data) else None
-        if labels is None:
-            if 'labels' in data:
-                full_labels = data['labels']
-                labels = full_labels[working_indices]
-            else:
-                labels = np.zeros(len(working_indices), dtype=int)
-        
-        input_dim = dataset.shape[1]
-        state = torch.load('models/current_model.pth')
-        encoding_dim = None
-        if isinstance(state, dict):
-            if 'encoder.2.weight' in state:
-                encoding_dim = state['encoder.2.weight'].shape[0]
-        if encoding_dim is None:
-            encoding_dim = 8
-        model = SimpleAutoencoder(input_dim=input_dim, encoding_dim=encoding_dim)
-        model.load_state_dict(state)
-        model.eval()
-        
-        # Calculate latent space & UMAP projection to 2D (reuse saved projection/latents if present)
         latent_representations = None
         latent_2d = None
 
-        # attempt to load latest saved projection and latents for this dataset
-        try:
-            proj_dir = os.path.join('results', 'projections2d')
-            chosen_proj = None
-            if os.path.exists(proj_dir):
-                pfiles = [os.path.join(proj_dir, f) for f in os.listdir(proj_dir) if f.endswith('.npz')]
-                pmatches = []
-                for pf in pfiles:
-                    try:
-                        meta = np.load(pf, allow_pickle=True)
-                        dsname = str(meta.get('filename',''))
-                        if dsname == str(data.get('filename','current_dataset')):
-                            ts = int(meta.get('timestamp', os.path.getmtime(pf))) if 'timestamp' in meta else int(os.path.getmtime(pf))
-                            pmatches.append((ts, pf))
-                    except Exception:
-                        continue
-                if pmatches:
-                    pmatches.sort(key=lambda x: x[0], reverse=True)
-                    chosen_proj = pmatches[0][1]
-
-            if chosen_proj is not None:
-                meta = np.load(chosen_proj, allow_pickle=True)
-                if 'data' in meta:
-                    latent_2d = np.array(meta['data'])
-                # try to find matching latents file
-                lat_dir = os.path.join('results', 'latents')
-                if os.path.exists(lat_dir):
-                    lfiles = [os.path.join(lat_dir, f) for f in os.listdir(lat_dir) if f.endswith('.npz')]
-                    lmatches = []
-                    for lf in lfiles:
-                        try:
-                            lm = np.load(lf, allow_pickle=True)
-                            dsname = str(lm.get('filename',''))
-                            if dsname == str(data.get('filename','current_dataset')):
-                                lts = int(lm.get('timestamp', os.path.getmtime(lf))) if 'timestamp' in lm else int(os.path.getmtime(lf))
-                                lmatches.append((lts, lf))
-                        except Exception:
-                            continue
-                    if lmatches:
-                        lmatches.sort(key=lambda x: x[0], reverse=True)
-                        latents_all = np.load(lmatches[0][1], allow_pickle=True)['data']
-                        if latents_all.shape[0] == len(all_data):
-                            latent_representations = latents_all[working_indices]
-        except Exception:
-            latent_representations = None
-            latent_2d = None
-
-        # if no saved projection, compute latent representations and UMAP now
-        if latent_2d is None:
-            with torch.no_grad():
-                latent_representations = model.encoder(dataset).numpy()
-            if deterministic:
-                reducer = umap.UMAP(n_components=2, random_state=42, n_jobs=1)
+        # Helper to map saved arrays by provided indices into the requested working_indices order
+        def map_by_indices(meta, key='data'):
+            if key not in meta:
+                return None
+            arr = np.array(meta[key])
+            if 'indices' in meta:
+                src_idx = np.array(meta['indices'], dtype=int)
+                pos = {int(v): i for i, v in enumerate(src_idx)}
+                positions = []
+                for gi in working_indices:
+                    if int(gi) not in pos:
+                        return None
+                    positions.append(pos[int(gi)])
+                return arr[positions]
             else:
-                reducer = umap.UMAP(n_components=2, init='spectral', n_neighbors=15, n_jobs=-1, random_state=None)
-            latent_2d = reducer.fit_transform(latent_representations)
+                # accept only if shapes match full dataset or the working subset
+                if arr.shape[0] == len(all_data):
+                    return arr[working_indices]
+                if arr.shape[0] == len(working_indices):
+                    return arr
+                return None
+
+        # Require current projection and latents to be present and mappable
+        cur_proj = os.path.join('results', 'current_projection2d.npz')
+        cur_lat = os.path.join('results', 'current_latents.npz')
+        if not os.path.exists(cur_proj) or not os.path.exists(cur_lat):
+            raise HTTPException(status_code=400, detail='current_projection2d.npz and current_latents.npz must be present in results and compatible with the requested subset')
+
+        # load and map projection
+        meta_proj = np.load(cur_proj, allow_pickle=True)
+        mapped_proj = map_by_indices(meta_proj, 'data')
+        if mapped_proj is None:
+            raise HTTPException(status_code=400, detail='current_projection2d.npz is not compatible with the requested subset or indices are missing')
+        latent_2d = np.array(mapped_proj)
+
+        # extract labels from projection or latents (require at least one)
+        proj_labels_mapped = None
+        if 'labels' in meta_proj:
+            proj_labels_mapped = map_by_indices(meta_proj, 'labels')
+
+        meta_lat = np.load(cur_lat, allow_pickle=True)
+        mapped_lat = map_by_indices(meta_lat, 'data')
+        if mapped_lat is None:
+            raise HTTPException(status_code=400, detail='current_latents.npz is not compatible with the requested subset or indices are missing')
+        latent_representations = np.array(mapped_lat)
+
+        lat_labels_mapped = None
+        if 'labels' in meta_lat:
+            lat_labels_mapped = map_by_indices(meta_lat, 'labels')
+
+        # labels must come from currents only
+        if proj_labels_mapped is not None:
+            labels = np.array(proj_labels_mapped)
+        elif lat_labels_mapped is not None:
+            labels = np.array(lat_labels_mapped)
+        else:
+            raise HTTPException(status_code=400, detail='No labels found in current_projection2d.npz or current_latents.npz')
 
         # Prepare data for Chart.js, include latent vector if available
         points = []
@@ -303,56 +192,29 @@ async def reconstruct_sample(index: int = 0, subset: str | None = None):
                 raise HTTPException(status_code=400, detail=f"Index out of range (0..{n_samples-1})")
             global_idx = int(index)
 
-        # Try to return reconstruction from latest saved reconstructions file for this dataset
-        reconstruction = None
+        # Only use current_reconstructions.npz; fail if missing or incompatible
+        cur_recon = os.path.join('results', 'current_reconstructions.npz')
+        if not os.path.exists(cur_recon):
+            raise HTTPException(status_code=400, detail='current_reconstructions.npz must be present in results and compatible with the requested subset')
         try:
-            recon_dir = os.path.join('results', 'reconstructions')
-            if os.path.exists(recon_dir):
-                rfiles = [os.path.join(recon_dir, f) for f in os.listdir(recon_dir) if f.endswith('.npz')]
-                rmatches = []
-                for rf in rfiles:
-                    try:
-                        rm = np.load(rf, allow_pickle=True)
-                        dsname = str(rm.get('filename',''))
-                        if dsname == str(data.get('filename','current_dataset')):
-                            rts = int(rm.get('timestamp', os.path.getmtime(rf))) if 'timestamp' in rm else int(os.path.getmtime(rf))
-                            rmatches.append((rts, rf))
-                    except Exception:
-                        continue
-                if rmatches:
-                    rmatches.sort(key=lambda x: x[0], reverse=True)
-                    chosen_recon = rmatches[0][1]
-                    try:
-                        rm = np.load(chosen_recon, allow_pickle=True)
-                        if 'data' in rm and int(global_idx) < rm['data'].shape[0]:
-                            reconstruction = rm['data'][int(global_idx)].tolist()
-                    except Exception:
-                        reconstruction = None
+            rm = np.load(cur_recon, allow_pickle=True)
+            if 'indices' in rm:
+                idxs = np.array(rm['indices'], dtype=int)
+                matches = np.where(idxs == int(global_idx))[0]
+                if matches.size > 0:
+                    reconstruction = rm['data'][int(matches[0])].tolist()
+                else:
+                    raise HTTPException(status_code=400, detail='Requested sample not found in current_reconstructions.npz')
+            else:
+                # require the file to cover the full dataset or the working subset length
+                if 'data' in rm and int(global_idx) < rm['data'].shape[0]:
+                    reconstruction = rm['data'][int(global_idx)].tolist()
+                else:
+                    raise HTTPException(status_code=400, detail='current_reconstructions.npz is not compatible with the requested subset or indices are missing')
+        except HTTPException:
+            raise
         except Exception:
-            reconstruction = None
-
-        # Fallback to model reconstruction if saved reconstruction not found
-        if reconstruction is None:
-            sample = torch.FloatTensor(all_data[global_idx:global_idx+1])
-
-            # load model state and instantiate model
-            state = torch.load('models/current_model.pth')
-            encoding_dim = None
-            if isinstance(state, dict) and 'encoder.2.weight' in state:
-                encoding_dim = state['encoder.2.weight'].shape[0]
-            if encoding_dim is None:
-                encoding_dim = 8
-
-            # input dim comes from the full dataset
-            input_dim = all_data.shape[1]
-            model = SimpleAutoencoder(input_dim=input_dim, encoding_dim=encoding_dim)
-            model.load_state_dict(state)
-            model.eval()
-
-            with torch.no_grad():
-                recon_t = model(sample)
-                reconstructed = recon_t.detach().cpu().numpy()[0]
-            reconstruction = reconstructed.tolist()
+            raise HTTPException(status_code=500, detail='Failed to read current_reconstructions.npz')
 
         # original sample from the global dataset
         original = all_data[global_idx].tolist()

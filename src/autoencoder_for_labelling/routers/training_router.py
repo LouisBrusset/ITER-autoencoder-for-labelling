@@ -273,3 +273,175 @@ async def inference_options():
         return { 'latents': latents, 'projections': projections, 'reconstructions': reconstructions }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/current-inference")
+async def current_inference():
+    """Return information about currently loaded inference files (if any).
+
+    Checks for results/current_latents.npz, results/current_projection2d.npz and
+    results/current_reconstructions.npz and returns their metadata (dataset filename and timestamp)
+    so the frontend can display which inference is currently active.
+    """
+    try:
+        out = {
+            'latents': None,
+            'projection2d': None,
+            'reconstructions': None,
+            'loaded': False
+        }
+        base = os.path.join('results')
+        latf = os.path.join(base, 'current_latents.npz')
+        projf = os.path.join(base, 'current_projection2d.npz')
+        reconf = os.path.join(base, 'current_reconstructions.npz')
+
+        def read_meta(path):
+            try:
+                if not os.path.exists(path):
+                    return None
+                import numpy as _np
+                m = _np.load(path, allow_pickle=True)
+                return {
+                    'file': path,
+                    'dataset': str(m.get('filename', '')),
+                    'timestamp': int(m.get('timestamp', os.path.getmtime(path))) if ('timestamp' in m or True) else int(os.path.getmtime(path))
+                }
+            except Exception:
+                return {'file': path}
+
+        out['latents'] = read_meta(latf)
+        out['projection2d'] = read_meta(projf)
+        out['reconstructions'] = read_meta(reconf)
+
+        if out['latents'] or out['projection2d'] or out['reconstructions']:
+            out['loaded'] = True
+
+        return out
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/load-inference")
+async def load_inference(latents_file: str = None, projection_file: str = None, reconstructions_file: str = None):
+    """Load selected inference artifacts as the current inference.
+
+    The API expects full paths as returned by `/inference-options` (or relative paths under the repo).
+    It will copy the files to results/current_latents.npz, results/current_projection2d.npz and
+    results/current_reconstructions.npz so the visualization and classification code can reference
+    the "current" inference files.
+    """
+    try:
+        # ensure at least one file provided
+        if not (latents_file or projection_file or reconstructions_file):
+            raise HTTPException(status_code=400, detail="No inference file specified to load")
+
+        os.makedirs(os.path.join('results'), exist_ok=True)
+        # destination names
+        dest_latents = os.path.join('results', 'current_latents.npz')
+        dest_proj = os.path.join('results', 'current_projection2d.npz')
+        dest_recon = os.path.join('results', 'current_reconstructions.npz')
+
+        # helper copy function
+        def copy_if(src, dst):
+            if not src:
+                return False
+            if not os.path.exists(src):
+                # try relative path under workspace
+                alt = src
+                if os.path.exists(alt):
+                    src = alt
+                else:
+                    raise HTTPException(status_code=404, detail=f"File not found: {src}")
+            # perform a simple copy by reading/writing binary
+            with open(src, 'rb') as fr, open(dst, 'wb') as fw:
+                fw.write(fr.read())
+            return True
+
+        copied = {}
+        if latents_file:
+            copy_if(latents_file, dest_latents)
+            copied['latents'] = dest_latents
+        if projection_file:
+            copy_if(projection_file, dest_proj)
+            copied['projection2d'] = dest_proj
+        if reconstructions_file:
+            copy_if(reconstructions_file, dest_recon)
+            copied['reconstructions'] = dest_recon
+
+        return { 'status': 'success', 'loaded': copied }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/delete-inference")
+async def delete_inference(file_path: str):
+    """Delete a saved inference artifact file (full path as returned by /inference-options).
+
+    This will remove the file from disk. If the deleted file is currently set as a current_* file,
+    the current_* file will not be automatically removed (safer behaviour).
+    """
+    try:
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="File not found")
+
+        # Try to load metadata from the file being deleted to detect if it corresponds
+        # to the currently loaded inference triplet. If so, remove current_* files as well
+        try:
+            meta_del = np.load(file_path, allow_pickle=True)
+            del_dataset = str(meta_del.get('filename', '')) if 'filename' in meta_del or True else None
+            del_ts = int(meta_del.get('timestamp', os.path.getmtime(file_path))) if ('timestamp' in meta_del or True) else int(os.path.getmtime(file_path))
+        except Exception:
+            meta_del = None
+            del_dataset = None
+            del_ts = None
+
+        # Check current_* files — if any of them originates from the same dataset+timestamp
+        # as the file being deleted, we consider the loaded inference invalid and remove all currents.
+        currents_removed = []
+        try:
+            base = os.path.join('results')
+            cur_lat = os.path.join(base, 'current_latents.npz')
+            cur_proj = os.path.join(base, 'current_projection2d.npz')
+            cur_recon = os.path.join(base, 'current_reconstructions.npz')
+
+            should_remove_currents = False
+            if meta_del is not None and (del_dataset is not None or del_ts is not None):
+                for cur in (cur_lat, cur_proj, cur_recon):
+                    if os.path.exists(cur):
+                        try:
+                            cm = np.load(cur, allow_pickle=True)
+                            cur_ds = str(cm.get('filename', '')) if 'filename' in cm or True else None
+                            cur_ts = int(cm.get('timestamp', os.path.getmtime(cur))) if ('timestamp' in cm or True) else int(os.path.getmtime(cur))
+                            if (del_dataset and cur_ds and del_dataset == cur_ds) or (del_ts and cur_ts and del_ts == cur_ts):
+                                should_remove_currents = True
+                                break
+                        except Exception:
+                            # if we can't read current metadata, skip
+                            continue
+
+            if should_remove_currents:
+                for cur in (cur_lat, cur_proj, cur_recon):
+                    if os.path.exists(cur):
+                        try:
+                            os.remove(cur)
+                            currents_removed.append(cur)
+                        except Exception:
+                            # ignore removal errors
+                            pass
+        except Exception:
+            # ignore any error in current-file handling and continue with deletion
+            pass
+
+        # Finally remove the requested saved artifact
+        os.remove(file_path)
+
+        resp = { 'status': 'success', 'file': file_path }
+        if currents_removed:
+            resp['currents_removed'] = currents_removed
+        return resp
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

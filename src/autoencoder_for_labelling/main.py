@@ -1,12 +1,4 @@
 import os
-# import warnings
-# import pkg_resources
-
-# Conf os + warnings
-# os.environ['PYTORCH_NVFUSER_DISABLE'] = '1'
-# os.environ['PYTORCH_NVFUSER_DISABLE_FALLBACK'] = '1'
-# warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
-# warnings.filterwarnings("ignore", category=FutureWarning, module="pkg_resources")
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

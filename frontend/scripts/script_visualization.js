@@ -223,18 +223,20 @@ window.checkInferenceStatusViz = async function() {
         // ignore
     }
     try {
-        const resp = await fetch(`${API_BASE}/inference-options`);
-        if (!resp.ok) { el.innerHTML = '<div class="warning">Unable to check inference</div>'; return; }
-        const data = await resp.json();
-        const nLat = (data.latents && data.latents.length) ? data.latents.length : 0;
-        const nProj = (data.projections && data.projections.length) ? data.projections.length : 0;
-        const nRec = (data.reconstructions && data.reconstructions.length) ? data.reconstructions.length : 0;
-        if (nLat > 0 && nProj > 0 && nRec > 0) {
-            el.innerHTML = `<div class="success">Inference available — latents: ${nLat}, projections: ${nProj}, reconstructions: ${nRec}</div>`;
-        } else if (nLat+ nProj + nRec > 0) {
-            el.innerHTML = `<div class="warning">Partial inference artifacts present — latents: ${nLat}, projections: ${nProj}, reconstructions: ${nRec}</div>`;
+        // Prefer showing which current_* files are loaded
+        const curResp = await fetch(`${API_BASE}/current-inference`);
+        if (curResp.ok) {
+            const cur = await curResp.json();
+            if (cur.loaded) {
+                const parts = [];
+                if (cur.projection2d && cur.projection2d.dataset) parts.push(cur.projection2d.dataset);
+                if (cur.projection2d && cur.projection2d.timestamp) parts.push(new Date(cur.projection2d.timestamp*1000).toLocaleString());
+                el.innerHTML = `<div class="success">Inference loaded — ${parts.join(' • ')}</div>`;
+            } else {
+                el.innerHTML = '<div class="warning">Inference not loaded</div>';
+            }
         } else {
-            el.innerHTML = '<div class="warning">Inference not run</div>';
+            el.innerHTML = '<div class="warning">Unable to check inference</div>';
         }
     } catch (err) {
         console.error(err);

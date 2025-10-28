@@ -31,6 +31,10 @@ body {
     background: white;
     min-height: 100vh;
     box-shadow: 0 0 20px rgba(0,0,0,0.1);
+    /* make the container a column flex layout so footer can be pushed
+       to the bottom with margin-top: auto on the footer */
+    display: flex;
+    flex-direction: column;
 }
 
 
@@ -290,22 +294,22 @@ Spacing and weight for lines inside the status box.
 }
 
 
+
+
 /*Footer to easily navigate between sections*/
 .app-footer {
-    /* Keep footer fixed to bottom but constrain it to the container width
-       by centering and using the same max-width as .container. */
-    position: fixed;
-    bottom: 0;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 100%;
-    max-width: 1200px; /* match .container */
+    /* Footer flows with the document. When .container is a column flex
+       layout, margin-top: auto pushes the footer to the bottom when the
+       content is shorter than the viewport. */
     background-color: #f8f9fa;
     border-top: 1px solid #dee2e6;
     padding: 10px 20px;
     display: flex;
     justify-content: space-between;
     z-index: 1000;
+    margin-top: auto;
+    position: static; /* ensure it participates in normal flow */
+    width: 100%;
 }
 .footer-nav-btn {
     /* Reuse primary button color and basic button sizing while keeping
@@ -326,9 +330,9 @@ Spacing and weight for lines inside the status box.
     background: var(--footer-disabled);
     cursor: not-allowed;
 }
-/*Ensure main container has space above footer*/
+/*Remove extra bottom padding (not needed when footer is in flow)*/
 .container {
-    padding-bottom: 60px;
+    padding-bottom: 0;
 }
 
 
