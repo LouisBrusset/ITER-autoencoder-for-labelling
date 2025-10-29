@@ -51,3 +51,7 @@ models/**/*.pt
 results/**/*.json
 results/**/*.npz
 results/*.npz
+
+notebooks/*.npz
+
+results/labels/*.json

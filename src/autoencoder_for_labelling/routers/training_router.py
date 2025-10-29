@@ -1,8 +1,10 @@
 import os
 import re
 import asyncio
+import json
+import time
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Body
 
 import torch
 import numpy as np
@@ -16,7 +18,9 @@ router = APIRouter()
 @router.get("/model-options")
 async def get_model_options():
     """Give saved model options"""
-    saved_models = os.listdir("models/saved")
+    saved_models = []
+    if os.path.exists("models/saved_model"):
+        saved_models = os.listdir("models/saved_model")
     return {"saved_models": saved_models}
 
 
@@ -24,7 +28,7 @@ async def get_model_options():
 async def delete_model(model_filename: str):
     """Delete a specific saved model file"""
     try:
-        model_path = f"models/saved/{model_filename}"
+        model_path = f"models/saved_model/{model_filename}"
         if not os.path.exists(model_path):
             raise HTTPException(status_code=404, detail="Model file not found")
         
@@ -71,6 +75,14 @@ async def delete_model(model_filename: str):
                 pass
 
         os.remove(model_path)
+        # try to remove associated architecture file if present
+        try:
+            arch_name = os.path.splitext(model_filename)[0] + '.json'
+            arch_path = os.path.join('models', 'saved_architechture', arch_name)
+            if os.path.exists(arch_path):
+                os.remove(arch_path)
+        except Exception:
+            pass
         
         return {
             "status": "success", 
@@ -113,7 +125,8 @@ async def get_current_model():
 
 
 @router.post("/start-training")
-async def start_training(epochs: int = 100, learning_rate: float = 0.001, encoding_dim: int = 8):
+async def start_training(epochs: int = 100, learning_rate: float = 0.001, encoding_dim: int = 8,
+                         config: dict = Body(None)):
     """Start training the autoencoder model"""
     if training_metrics["is_training"]:
         raise HTTPException(status_code=400, detail="Training already in progress")
@@ -145,7 +158,38 @@ async def start_training(epochs: int = 100, learning_rate: float = 0.001, encodi
         "epochs_data": []
     })
 
-    asyncio.create_task(run_training(train_data, val_data, epochs, learning_rate, encoding_dim))
+    # If the client provided a JSON body (from the form), prefer those values over query params
+    encoder_layer_sizes = None
+    decoder_layer_sizes = None
+    if config:
+        try:
+            # override simple params if present in body
+            if 'epochs' in config:
+                try:
+                    epochs = int(config.get('epochs'))
+                except Exception:
+                    pass
+            if 'learning_rate' in config:
+                try:
+                    learning_rate = float(config.get('learning_rate'))
+                except Exception:
+                    pass
+            if 'encoding_dim' in config:
+                try:
+                    encoding_dim = int(config.get('encoding_dim'))
+                except Exception:
+                    pass
+
+            # prefer explicit lists if provided
+            encoder_layer_sizes = config.get('encoder_layer_sizes', None)
+            decoder_layer_sizes = config.get('decoder_layer_sizes', None)
+        except Exception:
+            encoder_layer_sizes = None
+            decoder_layer_sizes = None
+
+    asyncio.create_task(run_training(train_data, val_data, epochs, learning_rate, encoding_dim,
+                                      encoder_layer_sizes=encoder_layer_sizes,
+                                      decoder_layer_sizes=decoder_layer_sizes))
     
     return {"status": "Training started", "total_epochs": epochs}
 
@@ -159,7 +203,7 @@ async def get_training_status():
 async def load_model(model_filename: str):
     """Load a specific saved model file as the current model"""
     try:
-        model_path = f"models/saved/{model_filename}"
+        model_path = f"models/saved_model/{model_filename}"
         if not os.path.exists(model_path):
             raise HTTPException(status_code=404, detail="Model not found")
         
@@ -170,27 +214,111 @@ async def load_model(model_filename: str):
         data = np.load("data/current_dataset.npz")
         input_dim = data['data'].shape[1]
         
-        # Load the saved state dict first so we can infer encoding dim
-        state = torch.load(model_path)
+        # Load the saved state or checkpoint. The checkpoint may be either:
+        # - a plain state_dict (mapping of tensor names -> tensors)
+        # - a dict containing {'state_dict': <state_dict>, 'encoder_layer_sizes':..., ...}
+        raw = torch.load(model_path)
         encoding_dim = None
-        if isinstance(state, dict):
-            if 'encoder.2.weight' in state:     # common key for second encoder Linear layer
-                encoding_dim = state['encoder.2.weight'].shape[0]
-            else:
-                # try to parse from filename pattern _dim_<n>
-                m = re.search(r'_dim_(\d+)', model_filename)
-                if m:
-                    encoding_dim = int(m.group(1))
+        encoder_layer_sizes = None
+        decoder_layer_sizes = None
+        actual_state = None
+
+        if isinstance(raw, dict) and 'state_dict' in raw:
+            # new-style saved dict with metadata
+            actual_state = raw['state_dict']
+            encoder_layer_sizes = raw.get('encoder_layer_sizes', None)
+            decoder_layer_sizes = raw.get('decoder_layer_sizes', None)
+            encoding_dim = raw.get('encoding_dim', None)
+        elif isinstance(raw, dict):
+            # likely a raw state_dict
+            actual_state = raw
+
+        # If we still don't have encoding_dim or layer sizes, try to infer from actual_state
+        if actual_state is not None:
+            try:
+                enc_weights = []
+                dec_weights = []
+                for k, v in actual_state.items():
+                    if k.startswith('encoder.') and k.endswith('.weight'):
+                        try:
+                            idx = int(k.split('.')[1])
+                        except Exception:
+                            idx = None
+                        enc_weights.append((idx, v))
+                    if k.startswith('decoder.') and k.endswith('.weight'):
+                        try:
+                            idx = int(k.split('.')[1])
+                        except Exception:
+                            idx = None
+                        dec_weights.append((idx, v))
+
+                enc_weights.sort(key=lambda x: (x[0] is None, x[0]))
+                dec_weights.sort(key=lambda x: (x[0] is None, x[0]))
+
+                enc_outs = [int(t[1].shape[0]) for t in enc_weights if hasattr(t[1], 'shape')]
+                dec_outs = [int(t[1].shape[0]) for t in dec_weights if hasattr(t[1], 'shape')]
+
+                if len(enc_outs) > 0:
+                    # last encoder out is the encoding dim
+                    encoding_dim = int(enc_outs[-1])
+                    # intermediate encoder sizes are all but the last
+                    if len(enc_outs) > 1:
+                        encoder_layer_sizes = [int(x) for x in enc_outs[:-1]]
+                # For decoder, decoder_outs typically end with input_dim
+                if len(dec_outs) > 0:
+                    # if the final decoder out matches input_dim, use preceding outs as decoder_layer_sizes
+                    if dec_outs[-1] == input_dim and len(dec_outs) > 1:
+                        decoder_layer_sizes = [int(x) for x in dec_outs[:-1]]
+                    else:
+                        # fallback: use all but last if more than one, else use dec_outs
+                        if len(dec_outs) > 1:
+                            decoder_layer_sizes = [int(x) for x in dec_outs[:-1]]
+                        else:
+                            decoder_layer_sizes = [int(x) for x in dec_outs]
+            except Exception:
+                encoding_dim = None
+
+        if encoding_dim is None:
+            # try to parse from filename pattern _dim_(\d+)
+            m = re.search(r'_dim_(\d+)', model_filename)
+            if m:
+                encoding_dim = int(m.group(1))
         if encoding_dim is None:
             encoding_dim = 8
 
-        # Create model with inferred encoding_dim and load weights
-        model = SimpleAutoencoder(input_dim=input_dim, encoding_dim=encoding_dim)
-        model.load_state_dict(state)
+        # Create model with inferred encoding_dim and inferred layer sizes (if any) and load weights
+        model = SimpleAutoencoder(input_dim=input_dim, encoding_dim=encoding_dim,
+                                  encoder_layer_sizes=encoder_layer_sizes,
+                                  decoder_layer_sizes=decoder_layer_sizes)
+        try:
+            model.load_state_dict(actual_state)
+        except Exception as e:
+            # If loading the state dict into the reconstructed model fails, raise a helpful error
+            raise HTTPException(status_code=500, detail=f"Error(s) in loading state_dict for SimpleAutoencoder: {e}")
         model.eval()
 
-        # Store the model state as current model
-        torch.save(state, "models/current_model.pth")
+        # Store the model state as current model (keep original checkpoint bytes to preserve metadata)
+        # If original was a state_dict, save it as-is; otherwise save the file bytes
+        try:
+            # preserve original raw checkpoint (may include metadata)
+            torch.save(raw, "models/current_model.pth")
+            # also write a JSON file describing the current architecture for reproducible reconstruction
+            try:
+                arch_meta = {
+                    'encoding_dim': encoding_dim,
+                    'encoder_layer_sizes': encoder_layer_sizes,
+                    'decoder_layer_sizes': decoder_layer_sizes,
+                    'filename': model_filename,
+                    'timestamp': int(time.time())
+                }
+                with open(os.path.join('models', 'current_architecture.json'), 'w') as f:
+                    json.dump(arch_meta, f)
+            except Exception:
+                pass
+        except Exception:
+            # fallback: copy file bytes
+            with open(model_path, 'rb') as fr, open('models/current_model.pth', 'wb') as fw:
+                fw.write(fr.read())
 
         return {"status": "success", "model_loaded": model_filename}
     except Exception as e:

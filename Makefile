@@ -30,7 +30,9 @@ clean:
 	@rm -rf data/synthetic/* || true
 	@rm -rf data/uploaded/* || true
 	@rm -f models/current_model.pth || true
-	@rm -rf models/saved/* || true
+	@rm -f models/current_architecture.json || true
+	@rm -rf models/saved_model/* || true
+	@rm -rf models/saved_architechture/* || true
 
 	@echo "Removing results files..."
 	@rm -rf results/labels/* || true
@@ -55,5 +57,6 @@ clean-minimal:
 	@echo "Removing dataset and uploaded/synthetic files in data and models"
 	@rm -f data/current_dataset.npz || true
 	@rm -f models/current_model.pth || true
+	@rm -f models/current_architecture.json || true
 	@rm -f results/current_*.npz || true
 	@echo "Clean minimal complete."

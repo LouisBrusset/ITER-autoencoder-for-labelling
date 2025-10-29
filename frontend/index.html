@@ -122,6 +122,16 @@
                     <label>Latent dimension:</label>
                     <input type="number" id="encodingDim" value="5" min="2" max="20">
                 </div>
+                <div class="form-group">
+                    <label>Encoder layers (max 4):</label>
+                    <input type="number" id="encoderLayersCount" value="1" min="0" max="4">
+                    <div id="encoderLayersContainer" style="margin-top:6px;"></div>
+                </div>
+                <div class="form-group">
+                    <label>Decoder layers (max 5):</label>
+                    <input type="number" id="decoderLayersCount" value="1" min="0" max="5">
+                    <div id="decoderLayersContainer" style="margin-top:6px;"></div>
+                </div>
                 <button onclick="startTraining()" class="btn-primary" id="startTrainingBtn">Start Training</button>
             </div>
             

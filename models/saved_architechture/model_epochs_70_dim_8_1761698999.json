@@ -1,0 +1,1 @@
+{"encoder_layer_sizes": [128, 32], "decoder_layer_sizes": [32, 128], "encoding_dim": 8, "timestamp": 1761698999, "epochs": 70}

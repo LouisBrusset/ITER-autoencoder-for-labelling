@@ -8,7 +8,6 @@ window.initTrainingChart = function() {
     window.trainingChart = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: [],
             datasets: [
             {
                 label: 'Training Loss',
@@ -17,7 +16,8 @@ window.initTrainingChart = function() {
                 backgroundColor: 'rgba(75, 192, 192, 0.1)',
                 borderWidth: 2,
                 pointRadius: 3,
-                fill: true
+                fill: true,
+                parsing: false
             },
             {
                 label: 'Validation Loss',
@@ -26,16 +26,56 @@ window.initTrainingChart = function() {
                 backgroundColor: 'rgba(255, 99, 132, 0.08)',
                 borderWidth: 2,
                 pointRadius: 3,
-                fill: true
+                fill: true,
+                parsing: false
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            scales: { x: { title: { display: true, text: 'Epoch' } }, y: { title: { display: true, text: 'Loss' }, beginAtZero: true } }
+            scales: { x: { type: 'linear', title: { display: true, text: 'Epoch' }, ticks: { precision:0 } }, y: { title: { display: true, text: 'Loss' }, beginAtZero: true } }
         }
     });
 };
+
+// Dynamically render encoder/decoder layer size inputs based on counts
+window.renderLayerInputs = function() {
+    const encCount = parseInt(document.getElementById('encoderLayersCount')?.value || 0, 10);
+    const decCount = parseInt(document.getElementById('decoderLayersCount')?.value || 0, 10);
+
+    const encContainer = document.getElementById('encoderLayersContainer');
+    const decContainer = document.getElementById('decoderLayersContainer');
+    if (encContainer) {
+        let html = '';
+        for (let i=0;i<encCount;i++) {
+            const id = `encoder_layer_${i}`;
+            html += `<div class="small">Layer ${i+1} neurons: <input type="number" id="${id}" value="${Math.max(8, Math.floor(32/Math.pow(2,i)))}" min="1" step="1"></div>`;
+        }
+        encContainer.innerHTML = html;
+    }
+    if (decContainer) {
+        let html = '';
+        for (let i=0;i<decCount;i++) {
+            const id = `decoder_layer_${i}`;
+            html += `<div class="small">Layer ${i+1} neurons: <input type="number" id="${id}" value="${Math.max(8, Math.floor(32/Math.pow(2,i)))}" min="1" step="1"></div>`;
+        }
+        decContainer.innerHTML = html;
+    }
+};
+
+// Attach listeners once DOM is ready
+window.addEventListener('load', function(){
+    try {
+        const encEl = document.getElementById('encoderLayersCount');
+        const decEl = document.getElementById('decoderLayersCount');
+        if (encEl) encEl.addEventListener('change', window.renderLayerInputs);
+        if (decEl) decEl.addEventListener('change', window.renderLayerInputs);
+        // initial render
+        window.renderLayerInputs();
+    } catch (e) {
+        // ignore
+    }
+});
 
 window.loadModelOptions = async function() {
     try {
@@ -121,11 +161,32 @@ window.startTraining = async function() {
     const epochs = document.getElementById('trainingEpochs').value;
     const learningRate = document.getElementById('learningRate').value;
     const encodingDim = document.getElementById('encodingDim').value;
-    
+    // gather encoder/decoder layer sizes from dynamic inputs
+    const encCount = parseInt(document.getElementById('encoderLayersCount')?.value || 0, 10);
+    const decCount = parseInt(document.getElementById('decoderLayersCount')?.value || 0, 10);
+    const encoder_layer_sizes = [];
+    const decoder_layer_sizes = [];
+    for (let i=0;i<encCount;i++) {
+        const el = document.getElementById(`encoder_layer_${i}`);
+        if (el) encoder_layer_sizes.push(parseInt(el.value));
+    }
+    for (let i=0;i<decCount;i++) {
+        const el = document.getElementById(`decoder_layer_${i}`);
+        if (el) decoder_layer_sizes.push(parseInt(el.value));
+    }
+
+    const payload = {
+        epochs: parseInt(epochs,10),
+        learning_rate: parseFloat(learningRate),
+        encoding_dim: parseInt(encodingDim,10),
+        encoder_layer_sizes: encoder_layer_sizes,
+        decoder_layer_sizes: decoder_layer_sizes
+    };
+
     try {
         const response = await fetch(
-            `${API_BASE}/start-training?epochs=${epochs}&learning_rate=${learningRate}&encoding_dim=${encodingDim}`,
-            { method: 'POST' }
+            `${API_BASE}/start-training`,
+            { method: 'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify(payload) }
         );
         const result = await response.json();
 
@@ -157,11 +218,20 @@ window.updateTrainingStatus = async function() {
 
         // Update chart: use epochs_data and train_loss_history / val_loss_history
         if (data.epochs_data) {
-            trainingChart.data.labels = data.epochs_data;
-            // training dataset
-            if (data.train_loss_history) trainingChart.data.datasets[0].data = data.train_loss_history;
-            // validation dataset
-            if (data.val_loss_history) trainingChart.data.datasets[1].data = data.val_loss_history;
+            // Build xy points to ensure epochs are used as numeric x values and ordered correctly
+            const epochs = data.epochs_data || [];
+            const trainLoss = data.train_loss_history || [];
+            const valLoss = data.val_loss_history || [];
+            const trainPoints = [];
+            const valPoints = [];
+            for (let i=0;i<epochs.length;i++) {
+                const e = Number(epochs[i]);
+                if (!Number.isFinite(e)) continue;
+                if (i < trainLoss.length) trainPoints.push({x: e, y: Number(trainLoss[i])});
+                if (i < valLoss.length) valPoints.push({x: e, y: Number(valLoss[i])});
+            }
+            trainingChart.data.datasets[0].data = trainPoints;
+            trainingChart.data.datasets[1].data = valPoints;
             trainingChart.update();
         }
         
