@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: run test clean test-api
+.PHONY: run test test-quick clean clean-minimal test-clean
 
 # run: clean data/models/tests then start the backend server
 run:
@@ -60,3 +60,5 @@ clean-minimal:
 	@rm -f models/current_architecture.json || true
 	@rm -f results/current_*.npz || true
 	@echo "Clean minimal complete."
+
+
