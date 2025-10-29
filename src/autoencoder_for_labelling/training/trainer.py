@@ -1,6 +1,8 @@
 import torch.nn as nn
 import torch.optim as optim
 import torch
+from autoencoder_for_labelling.training.vae_loss import vae_loss
+
 
 def train_autoencoder(
                       model: nn.Module,
@@ -20,7 +22,13 @@ def train_autoencoder(
     model.train()
     optimizer.zero_grad()
     outputs = model(train_data)
-    loss = criterion(outputs, train_data)
+    # If model returns (recon, mu, logvar) treat as VAE
+    if isinstance(outputs, tuple) and len(outputs) == 3:
+        recon, mu, logvar = outputs
+        loss, recon_loss, kld_loss = vae_loss(recon, train_data, mu, logvar, beta=0.01)
+    else:
+        recon = outputs
+        loss = criterion(recon, train_data)
     loss.backward()
     optimizer.step()
 
@@ -30,7 +38,12 @@ def train_autoencoder(
         model.eval()
         with torch.no_grad():
             val_outputs = model(val_data)
-            val_loss = float(criterion(val_outputs, val_data).item())
+            if isinstance(val_outputs, tuple) and len(val_outputs) == 3:
+                v_recon, v_mu, v_logvar = val_outputs
+                v_loss, v_recon_loss, v_kld_loss = vae_loss(v_recon, val_data, v_mu, v_logvar, beta=0.01)
+                val_loss = float(v_loss.item())
+            else:
+                val_loss = float(criterion(val_outputs, val_data).item())
         model.train()
 
     if verbose:

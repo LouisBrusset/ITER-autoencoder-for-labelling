@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from autoencoder_for_labelling.main import app
-from autoencoder_for_labelling.models.autoencoder import SimpleAutoencoder
+from autoencoder_for_labelling.models.autoencoder import Convolutional_Beta_VAE
 
 client = TestClient(app)
 

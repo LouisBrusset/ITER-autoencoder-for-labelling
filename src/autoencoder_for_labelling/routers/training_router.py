@@ -10,7 +10,7 @@ import torch
 import numpy as np
 
 from autoencoder_for_labelling.services.training_service import training_metrics, run_training, perform_full_inference
-from autoencoder_for_labelling.models.autoencoder import SimpleAutoencoder
+from autoencoder_for_labelling.models.autoencoder import Convolutional_Beta_VAE
 
 router = APIRouter()
 
@@ -161,6 +161,8 @@ async def start_training(epochs: int = 100, learning_rate: float = 0.001, encodi
     # If the client provided a JSON body (from the form), prefer those values over query params
     encoder_layer_sizes = None
     decoder_layer_sizes = None
+    conv_layers = 0
+    conv_filter_size = 3
     if config:
         try:
             # override simple params if present in body
@@ -183,13 +185,24 @@ async def start_training(epochs: int = 100, learning_rate: float = 0.001, encodi
             # prefer explicit lists if provided
             encoder_layer_sizes = config.get('encoder_layer_sizes', None)
             decoder_layer_sizes = config.get('decoder_layer_sizes', None)
+            # convolutional params (optional)
+            try:
+                conv_layers = int(config.get('conv_layers', conv_layers))
+            except Exception:
+                conv_layers = conv_layers
+            try:
+                conv_filter_size = int(config.get('conv_filter_size', conv_filter_size))
+            except Exception:
+                conv_filter_size = conv_filter_size
         except Exception:
             encoder_layer_sizes = None
             decoder_layer_sizes = None
 
     asyncio.create_task(run_training(train_data, val_data, epochs, learning_rate, encoding_dim,
                                       encoder_layer_sizes=encoder_layer_sizes,
-                                      decoder_layer_sizes=decoder_layer_sizes))
+                                      decoder_layer_sizes=decoder_layer_sizes,
+                                      conv_layers=conv_layers,
+                                      conv_filter_size=conv_filter_size))
     
     return {"status": "Training started", "total_epochs": epochs}
 
@@ -278,6 +291,41 @@ async def load_model(model_filename: str):
             except Exception:
                 encoding_dim = None
 
+        # If we don't have architecture metadata, try to detect conv-based checkpoints
+        # by looking for conv_encoder / conv_decoder keys in the state_dict and
+        # populate arch_meta so we can reconstruct the correct model topology.
+        if 'arch_meta' not in locals() or arch_meta is None:
+            try:
+                arch_meta = {}
+                # if original raw checkpoint had metadata, prefer it
+                if isinstance(raw, dict):
+                    # raw may contain conv_layers/conv_filter_size
+                    if 'conv_layers' in raw:
+                        arch_meta['conv_layers'] = int(raw.get('conv_layers', 0))
+                    if 'conv_filter_size' in raw:
+                        arch_meta['conv_filter_size'] = int(raw.get('conv_filter_size', 3))
+
+                # inspect actual_state keys for conv encoder presence
+                if actual_state is not None:
+                    conv_keys = [k for k in actual_state.keys() if k.startswith('conv_encoder.') and k.endswith('.weight')]
+                    if len(conv_keys) > 0 and 'conv_layers' not in arch_meta:
+                        idxs = set()
+                        for k in conv_keys:
+                            parts = k.split('.')
+                            if len(parts) >= 3:
+                                try:
+                                    idx = int(parts[1])
+                                    idxs.add(idx)
+                                except Exception:
+                                    pass
+                        # number of conv layers equals number of unique conv indices found
+                        arch_meta['conv_layers'] = len(idxs)
+                        # default kernel size if not available
+                        if 'conv_filter_size' not in arch_meta:
+                            arch_meta['conv_filter_size'] = int(raw.get('conv_filter_size', 3)) if isinstance(raw, dict) else 3
+            except Exception:
+                arch_meta = None
+
         if encoding_dim is None:
             # try to parse from filename pattern _dim_(\d+)
             m = re.search(r'_dim_(\d+)', model_filename)
@@ -287,14 +335,29 @@ async def load_model(model_filename: str):
             encoding_dim = 8
 
         # Create model with inferred encoding_dim and inferred layer sizes (if any) and load weights
-        model = SimpleAutoencoder(input_dim=input_dim, encoding_dim=encoding_dim,
-                                  encoder_layer_sizes=encoder_layer_sizes,
-                                  decoder_layer_sizes=decoder_layer_sizes)
+        # try to read a saved architecture JSON matching this model filename
+        # If we already detected arch_meta earlier (from the checkpoint/state_dict), keep it
+        try:
+            arch_name = os.path.splitext(model_filename)[0] + '.json'
+            arch_path = os.path.join('models', 'saved_architechture', arch_name)
+            if os.path.exists(arch_path):
+                with open(arch_path, 'r') as f:
+                    arch_meta = json.load(f)
+        except Exception:
+            # preserve any previously-detected arch_meta; if none exists, ensure it's None
+            if 'arch_meta' not in locals():
+                arch_meta = None
+
+        model = Convolutional_Beta_VAE(input_dim=input_dim, encoding_dim=encoding_dim,
+                                       conv_layers=arch_meta.get('conv_layers', 0) if arch_meta else 0,
+                                       conv_filter_size=arch_meta.get('conv_filter_size', 3) if arch_meta else 3,
+                                       encoder_layer_sizes=encoder_layer_sizes,
+                                       decoder_layer_sizes=decoder_layer_sizes)
         try:
             model.load_state_dict(actual_state)
         except Exception as e:
             # If loading the state dict into the reconstructed model fails, raise a helpful error
-            raise HTTPException(status_code=500, detail=f"Error(s) in loading state_dict for SimpleAutoencoder: {e}")
+            raise HTTPException(status_code=500, detail=f"Error(s) in loading state_dict for Convolutional_Beta_VAE: {e}")
         model.eval()
 
         # Store the model state as current model (keep original checkpoint bytes to preserve metadata)
@@ -308,6 +371,8 @@ async def load_model(model_filename: str):
                     'encoding_dim': encoding_dim,
                     'encoder_layer_sizes': encoder_layer_sizes,
                     'decoder_layer_sizes': decoder_layer_sizes,
+                    'conv_layers': (arch_meta.get('conv_layers') if arch_meta and 'conv_layers' in arch_meta else raw.get('conv_layers') if isinstance(raw, dict) else None),
+                    'conv_filter_size': (arch_meta.get('conv_filter_size') if arch_meta and 'conv_filter_size' in arch_meta else raw.get('conv_filter_size') if isinstance(raw, dict) else None),
                     'filename': model_filename,
                     'timestamp': int(time.time())
                 }

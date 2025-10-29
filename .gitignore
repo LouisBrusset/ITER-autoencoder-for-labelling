@@ -32,26 +32,15 @@ htmlcov/
 
 
 # Large datasets
-## NetCDF files (all .nc files)
-data/**/*.nc
-data/**/*.npy
-data/**/*.pt
-data/**/*.csv
-data/**/*.npz
+## NetCDF files (all .nc files) & other datasets
+data/
 
 notebooks/*.nc
 ## But keep this specific file
 
 # User generated files
-## Model parameters
-models/**/*.pth
-models/**/*.h5
-models/**/*.pt
-
-results/**/*.json
-results/**/*.npz
-results/*.npz
+## Model parameters & results
+models/
+results/
 
 notebooks/*.npz
-
-results/labels/*.json

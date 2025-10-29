@@ -4,9 +4,7 @@ from fastapi import APIRouter, HTTPException
 
 import numpy as np
 import torch
-import umap
 
-from autoencoder_for_labelling.models.autoencoder import SimpleAutoencoder
 
 router = APIRouter()
 

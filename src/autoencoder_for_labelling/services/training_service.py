@@ -7,7 +7,7 @@ import os
 import json
 import umap
 
-from autoencoder_for_labelling.models.autoencoder import SimpleAutoencoder
+from autoencoder_for_labelling.models.autoencoder import Convolutional_Beta_VAE
 from autoencoder_for_labelling.training.trainer import train_autoencoder
 
 # Shared training metrics state
@@ -24,15 +24,19 @@ training_metrics = {
 
 
 async def run_training(train_data, val_data, epochs, learning_rate, encoding_dim,
-                       encoder_layer_sizes=None, decoder_layer_sizes=None, verbose=False):
+                       encoder_layer_sizes=None, decoder_layer_sizes=None,
+                       conv_layers: int = 0, conv_filter_size: int = 3,
+                       verbose=False):
     try:
         input_dim = train_data.shape[1]
         # Create model with optional custom layer sizes
-        model = SimpleAutoencoder(input_dim=input_dim,
-                                  encoding_dim=encoding_dim,
-                                  encoder_layer_sizes=encoder_layer_sizes,
-                                  decoder_layer_sizes=decoder_layer_sizes)
-        
+        model = Convolutional_Beta_VAE(input_dim=input_dim,
+                                       encoding_dim=encoding_dim,
+                                       conv_layers=conv_layers,
+                                       conv_filter_size=conv_filter_size,
+                                       encoder_layer_sizes=encoder_layer_sizes,
+                                       decoder_layer_sizes=decoder_layer_sizes)
+
         for epoch in range(1, epochs + 1):
             train_loss, val_loss = train_autoencoder(model, train_data, val_data, epoch, learning_rate, verbose=False)
 
@@ -43,9 +47,9 @@ async def run_training(train_data, val_data, epochs, learning_rate, encoding_dim
             if val_loss is not None:
                 training_metrics["val_loss_history"].append(float(val_loss))
             training_metrics["epochs_data"].append(epoch)
-            
+
             await asyncio.sleep(0.05)
-        
+
         # Save the trained model state dict along with architecture metadata so it can be
         # reconstructed exactly when loading for inference later.
         ts = int(time.time())
@@ -57,6 +61,8 @@ async def run_training(train_data, val_data, epochs, learning_rate, encoding_dim
             'state_dict': model.state_dict(),
             'encoder_layer_sizes': encoder_layer_sizes,
             'decoder_layer_sizes': decoder_layer_sizes,
+            'conv_layers': conv_layers,
+            'conv_filter_size': conv_filter_size,
             'encoding_dim': encoding_dim,
             'timestamp': ts,
             'epochs': epochs
@@ -167,13 +173,15 @@ async def perform_full_inference(deterministic: bool = True) -> dict:
 
     # Build model with inferred or provided topology
     input_dim = int(all_data.shape[1])
-    model = SimpleAutoencoder(input_dim=input_dim, encoding_dim=encoding_dim,
+    model = Convolutional_Beta_VAE(input_dim=input_dim, encoding_dim=encoding_dim,
+                              conv_layers=arch_meta.get('conv_layers', 0) if arch_meta else 0,
+                              conv_filter_size=arch_meta.get('conv_filter_size', 3) if arch_meta else 3,
                               encoder_layer_sizes=encoder_layer_sizes,
                               decoder_layer_sizes=decoder_layer_sizes)
     try:
         model.load_state_dict(actual_state)
     except Exception as e:
-        raise RuntimeError(f"Error(s) in loading state_dict for SimpleAutoencoder: {e}")
+        raise RuntimeError(f"Error(s) in loading state_dict for Convolutional_Beta_VAE: {e}")
     model.eval()
 
     # compute latents and reconstructions in batches
@@ -183,10 +191,26 @@ async def perform_full_inference(deterministic: bool = True) -> dict:
     with torch.no_grad():
         for i in range(0, n_samples, batch):
             chunk = torch.FloatTensor(all_data[i:i+batch])
-            latent = model.encoder(chunk).cpu().numpy()
-            recon = model(chunk).cpu().numpy()
-            latents_list.append(latent)
-            recons_list.append(recon)
+            out = model(chunk)
+            # model may return (recon, mu, logvar) for VAE-style models
+            if isinstance(out, tuple) and len(out) == 3:
+                recon_t, mu, logvar = out
+                latent_np = mu.cpu().numpy()
+                recon_np = recon_t.cpu().numpy()
+            else:
+                # non-VAE: out is reconstruction; try to get an encoding via model.encode()
+                recon_np = out.cpu().numpy()
+                try:
+                    enc = model.encode(chunk)
+                    if isinstance(enc, tuple) and len(enc) == 2:
+                        latent_np = enc[0].cpu().numpy()
+                    else:
+                        latent_np = enc.cpu().numpy()
+                except Exception:
+                    # fallback: use reconstruction as a proxy (not ideal)
+                    latent_np = recon_np
+            latents_list.append(latent_np)
+            recons_list.append(recon_np)
     latents = np.vstack(latents_list)
     reconstructions = np.vstack(recons_list)
 

@@ -175,12 +175,18 @@ window.startTraining = async function() {
         if (el) decoder_layer_sizes.push(parseInt(el.value));
     }
 
+    // convolutional options (encoder only; decoder will mirror encoder config)
+    const convLayers = parseInt(document.getElementById('convLayersCount')?.value || 0, 10);
+    const convFilterSize = parseInt(document.getElementById('convFilterSize')?.value || 3, 10);
+
     const payload = {
         epochs: parseInt(epochs,10),
         learning_rate: parseFloat(learningRate),
         encoding_dim: parseInt(encodingDim,10),
         encoder_layer_sizes: encoder_layer_sizes,
-        decoder_layer_sizes: decoder_layer_sizes
+        decoder_layer_sizes: decoder_layer_sizes,
+        conv_layers: convLayers,
+        conv_filter_size: convFilterSize
     };
 
     try {
