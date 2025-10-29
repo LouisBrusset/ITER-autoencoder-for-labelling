@@ -178,6 +178,7 @@ window.startTraining = async function() {
     // convolutional options (encoder only; decoder will mirror encoder config)
     const convLayers = parseInt(document.getElementById('convLayersCount')?.value || 0, 10);
     const convFilterSize = parseInt(document.getElementById('convFilterSize')?.value || 3, 10);
+    const betaValue = parseFloat(document.getElementById('betaValue')?.value || 0.01);
 
     const payload = {
         epochs: parseInt(epochs,10),
@@ -186,7 +187,8 @@ window.startTraining = async function() {
         encoder_layer_sizes: encoder_layer_sizes,
         decoder_layer_sizes: decoder_layer_sizes,
         conv_layers: convLayers,
-        conv_filter_size: convFilterSize
+        conv_filter_size: convFilterSize,
+        beta: betaValue
     };
 
     try {

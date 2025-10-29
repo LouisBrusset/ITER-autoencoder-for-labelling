@@ -111,21 +111,23 @@ window.generateLatentSpace = async function() {
                     nearestLocal = i;
                 }
             }
-            let msg = `UMAP: (${px.toFixed(3)}, ${py.toFixed(3)})`;
+            // build a richer HTML message; coordinates on first line, latent vector on its own line (full)
+            let parts = [];
+            parts.push(`<strong>UMAP:</strong> (${px.toFixed(3)}, ${py.toFixed(3)})`);
             if (nearestLocal >= 0) {
                 const p = allPoints[nearestLocal];
-                msg += ` | Nearest sample: ${p.original_index}`;
-                if (p.label !== undefined && p.label !== null) msg += ` | Label: ${p.label}`;
+                parts.push(`<strong>Nearest sample:</strong> ${p.original_index}` + (p.label !== undefined && p.label !== null ? ` | <strong>Label:</strong> ${p.label}` : ''));
                 if (p.latent) {
-                    // show first 6 components of latent vector
                     try {
                         const latent = Array.isArray(p.latent) ? p.latent : [];
-                        const show = latent.slice(0,6).map(v => Number(v).toFixed(3)).join(', ');
-                        msg += ` | Latent[:6]=[${show}${latent.length>6? ', ...':''}]`;
-                    } catch(e) {}
+                        const allCoords = latent.map(v => Number(v).toFixed(3)).join(', ');
+                        parts.push(`<strong>Latent coords:</strong><br>[${allCoords}]`);
+                    } catch (e) {
+                        // ignore formatting errors
+                    }
                 }
             }
-            document.getElementById('pointInfo').innerHTML = msg;
+            document.getElementById('pointInfo').innerHTML = parts.join('<br>');
         };
 
         // click handler: find nearest point and request reconstruction

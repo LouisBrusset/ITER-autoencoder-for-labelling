@@ -26,6 +26,7 @@ training_metrics = {
 async def run_training(train_data, val_data, epochs, learning_rate, encoding_dim,
                        encoder_layer_sizes=None, decoder_layer_sizes=None,
                        conv_layers: int = 0, conv_filter_size: int = 3,
+                       beta: float = 0.01,
                        verbose=False):
     try:
         input_dim = train_data.shape[1]
@@ -38,7 +39,7 @@ async def run_training(train_data, val_data, epochs, learning_rate, encoding_dim
                                        decoder_layer_sizes=decoder_layer_sizes)
 
         for epoch in range(1, epochs + 1):
-            train_loss, val_loss = train_autoencoder(model, train_data, val_data, epoch, learning_rate, verbose=False)
+            train_loss, val_loss = train_autoencoder(model, train_data, val_data, epoch, learning_rate, beta=beta, verbose=False)
 
             training_metrics["current_epoch"] = epoch
             training_metrics["current_train_loss"] = float(train_loss)
@@ -63,6 +64,7 @@ async def run_training(train_data, val_data, epochs, learning_rate, encoding_dim
             'decoder_layer_sizes': decoder_layer_sizes,
             'conv_layers': conv_layers,
             'conv_filter_size': conv_filter_size,
+            'beta': float(beta),
             'encoding_dim': encoding_dim,
             'timestamp': ts,
             'epochs': epochs

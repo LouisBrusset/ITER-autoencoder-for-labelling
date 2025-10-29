@@ -10,6 +10,7 @@ def train_autoencoder(
                       val_data: torch.Tensor | None,
                       epoch: int,
                       learning_rate: float = 0.001,
+                      beta: float = 0.01,
                       verbose: bool = True
                       ) -> tuple[float, float | None]:
     """
@@ -25,7 +26,7 @@ def train_autoencoder(
     # If model returns (recon, mu, logvar) treat as VAE
     if isinstance(outputs, tuple) and len(outputs) == 3:
         recon, mu, logvar = outputs
-        loss, recon_loss, kld_loss = vae_loss(recon, train_data, mu, logvar, beta=0.01)
+        loss, recon_loss, kld_loss = vae_loss(recon, train_data, mu, logvar, beta=beta)
     else:
         recon = outputs
         loss = criterion(recon, train_data)
@@ -40,7 +41,7 @@ def train_autoencoder(
             val_outputs = model(val_data)
             if isinstance(val_outputs, tuple) and len(val_outputs) == 3:
                 v_recon, v_mu, v_logvar = val_outputs
-                v_loss, v_recon_loss, v_kld_loss = vae_loss(v_recon, val_data, v_mu, v_logvar, beta=0.01)
+                v_loss, v_recon_loss, v_kld_loss = vae_loss(v_recon, val_data, v_mu, v_logvar, beta=beta)
                 val_loss = float(v_loss.item())
             else:
                 val_loss = float(criterion(val_outputs, val_data).item())

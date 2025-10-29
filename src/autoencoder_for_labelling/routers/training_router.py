@@ -163,6 +163,7 @@ async def start_training(epochs: int = 100, learning_rate: float = 0.001, encodi
     decoder_layer_sizes = None
     conv_layers = 0
     conv_filter_size = 3
+    beta = 0.01
     if config:
         try:
             # override simple params if present in body
@@ -194,6 +195,10 @@ async def start_training(epochs: int = 100, learning_rate: float = 0.001, encodi
                 conv_filter_size = int(config.get('conv_filter_size', conv_filter_size))
             except Exception:
                 conv_filter_size = conv_filter_size
+            try:
+                beta = float(config.get('beta', 0.01))
+            except Exception:
+                beta = 0.01
         except Exception:
             encoder_layer_sizes = None
             decoder_layer_sizes = None
@@ -202,7 +207,8 @@ async def start_training(epochs: int = 100, learning_rate: float = 0.001, encodi
                                       encoder_layer_sizes=encoder_layer_sizes,
                                       decoder_layer_sizes=decoder_layer_sizes,
                                       conv_layers=conv_layers,
-                                      conv_filter_size=conv_filter_size))
+                                      conv_filter_size=conv_filter_size,
+                                      beta=beta))
     
     return {"status": "Training started", "total_epochs": epochs}
 
@@ -304,6 +310,11 @@ async def load_model(model_filename: str):
                         arch_meta['conv_layers'] = int(raw.get('conv_layers', 0))
                     if 'conv_filter_size' in raw:
                         arch_meta['conv_filter_size'] = int(raw.get('conv_filter_size', 3))
+                    if 'beta' in raw:
+                        try:
+                            arch_meta['beta'] = float(raw.get('beta', 0.01))
+                        except Exception:
+                            arch_meta['beta'] = 0.01
 
                 # inspect actual_state keys for conv encoder presence
                 if actual_state is not None:
@@ -373,6 +384,7 @@ async def load_model(model_filename: str):
                     'decoder_layer_sizes': decoder_layer_sizes,
                     'conv_layers': (arch_meta.get('conv_layers') if arch_meta and 'conv_layers' in arch_meta else raw.get('conv_layers') if isinstance(raw, dict) else None),
                     'conv_filter_size': (arch_meta.get('conv_filter_size') if arch_meta and 'conv_filter_size' in arch_meta else raw.get('conv_filter_size') if isinstance(raw, dict) else None),
+                    'beta': (arch_meta.get('beta') if arch_meta and 'beta' in arch_meta else raw.get('beta') if isinstance(raw, dict) else None),
                     'filename': model_filename,
                     'timestamp': int(time.time())
                 }
