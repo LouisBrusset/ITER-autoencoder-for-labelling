@@ -38,42 +38,53 @@ window.initTrainingChart = function() {
     });
 };
 
-// Dynamically render encoder/decoder layer size inputs based on counts
+// Render per-layer inputs for encoder/decoder hidden layers (max 4)
 window.renderLayerInputs = function() {
-    const encCount = parseInt(document.getElementById('encoderLayersCount')?.value || 0, 10);
-    const decCount = parseInt(document.getElementById('decoderLayersCount')?.value || 0, 10);
+    try {
+        const encDepth = parseInt(document.getElementById('encoderDepth')?.value || 0, 10);
+        const decDepth = parseInt(document.getElementById('decoderDepth')?.value || 0, 10);
+        const encContainer = document.getElementById('encoderLayersContainer');
+        const decContainer = document.getElementById('decoderLayersContainer');
 
-    const encContainer = document.getElementById('encoderLayersContainer');
-    const decContainer = document.getElementById('decoderLayersContainer');
-    if (encContainer) {
-        let html = '';
-        for (let i=0;i<encCount;i++) {
-            const id = `encoder_layer_${i}`;
-            html += `<div class="small">Layer ${i+1} neurons: <input type="number" id="${id}" value="${Math.max(8, Math.floor(32/Math.pow(2,i)))}" min="1" step="1"></div>`;
+        if (encContainer) {
+            let html = '';
+            for (let i = 0; i < encDepth; i++) {
+                const id = `encoder_hidden_${i}`;
+                // preserve existing value if present
+                const existing = document.getElementById(id);
+                const val = existing ? existing.value : Math.max(8, Math.floor(64 / Math.pow(2, i)));
+                html += `<div class="small">Hidden ${i+1} neurons: <input type="number" id="${id}" value="${val}" min="1" step="1" style="width:120px; margin-left:8px;"></div>`;
+            }
+            encContainer.innerHTML = html;
         }
-        encContainer.innerHTML = html;
-    }
-    if (decContainer) {
-        let html = '';
-        for (let i=0;i<decCount;i++) {
-            const id = `decoder_layer_${i}`;
-            html += `<div class="small">Layer ${i+1} neurons: <input type="number" id="${id}" value="${Math.max(8, Math.floor(32/Math.pow(2,i)))}" min="1" step="1"></div>`;
+
+        if (decContainer) {
+            let html = '';
+            for (let i = 0; i < decDepth; i++) {
+                const id = `decoder_hidden_${i}`;
+                const existing = document.getElementById(id);
+                const val = existing ? existing.value : Math.max(8, Math.floor(8 * Math.pow(2, i)));
+                html += `<div class="small">Hidden ${i+1} neurons: <input type="number" id="${id}" value="${val}" min="1" step="1" style="width:120px; margin-left:8px;"></div>`;
+            }
+            decContainer.innerHTML = html;
         }
-        decContainer.innerHTML = html;
+    } catch (e) {
+        // ignore rendering errors
+        console.error('renderLayerInputs error', e);
     }
 };
 
-// Attach listeners once DOM is ready
+// Attach listeners once DOM is ready to update per-layer inputs when depth changes
 window.addEventListener('load', function(){
     try {
-        const encEl = document.getElementById('encoderLayersCount');
-        const decEl = document.getElementById('decoderLayersCount');
+        const encEl = document.getElementById('encoderDepth');
+        const decEl = document.getElementById('decoderDepth');
         if (encEl) encEl.addEventListener('change', window.renderLayerInputs);
         if (decEl) decEl.addEventListener('change', window.renderLayerInputs);
         // initial render
         window.renderLayerInputs();
     } catch (e) {
-        // ignore
+        console.error('layer inputs init error', e);
     }
 });
 
@@ -161,18 +172,21 @@ window.startTraining = async function() {
     const epochs = document.getElementById('trainingEpochs').value;
     const learningRate = document.getElementById('learningRate').value;
     const encodingDim = document.getElementById('encodingDim').value;
-    // gather encoder/decoder layer sizes from dynamic inputs
-    const encCount = parseInt(document.getElementById('encoderLayersCount')?.value || 0, 10);
-    const decCount = parseInt(document.getElementById('decoderLayersCount')?.value || 0, 10);
+
+    // Read per-layer hidden sizes based on encoderDepth / decoderDepth
+    const encoderDepth = parseInt(document.getElementById('encoderDepth')?.value || 0, 10);
+    const decoderDepth = parseInt(document.getElementById('decoderDepth')?.value || 0, 10);
+
     const encoder_layer_sizes = [];
-    const decoder_layer_sizes = [];
-    for (let i=0;i<encCount;i++) {
-        const el = document.getElementById(`encoder_layer_${i}`);
-        if (el) encoder_layer_sizes.push(parseInt(el.value));
+    for (let i = 0; i < encoderDepth; i++) {
+        const el = document.getElementById(`encoder_hidden_${i}`);
+        if (el) encoder_layer_sizes.push(parseInt(el.value, 10));
     }
-    for (let i=0;i<decCount;i++) {
-        const el = document.getElementById(`decoder_layer_${i}`);
-        if (el) decoder_layer_sizes.push(parseInt(el.value));
+
+    const decoder_layer_sizes = [];
+    for (let i = 0; i < decoderDepth; i++) {
+        const el = document.getElementById(`decoder_hidden_${i}`);
+        if (el) decoder_layer_sizes.push(parseInt(el.value, 10));
     }
 
     // convolutional options (encoder only; decoder will mirror encoder config)
