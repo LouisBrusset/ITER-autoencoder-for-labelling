@@ -1,13 +1,23 @@
 SHELL := /bin/bash
+UNAME := $(shell uname -s)
 
-.PHONY: run test test-quick clean clean-minimal test-clean
+.PHONY: run run-fullstack test test-quick clean clean-minimal test-clean open-html
 
 # run: clean data/models/tests then start the backend server
+run-fullstack:
+	@echo "Opening frontend in default browser..."
+	@$(MAKE) open-html
+	@echo "Cleaning data and models before starting..."
+	@$(MAKE) clean
+	@echo "Starting backend (uvicorn) on port 8000"
+	@uvicorn src.autoencoder_for_labelling.main:app --reload --host 0.0.0.0 --port 8000
+
 run:
 	@echo "Cleaning data and models before starting..."
 	@$(MAKE) clean
 	@echo "Starting backend (uvicorn) on port 8000"
 	@uvicorn src.autoencoder_for_labelling.main:app --reload --host 0.0.0.0 --port 8000
+	
 
 # test: run tests with coverage and generate report
 test:
@@ -61,4 +71,14 @@ clean-minimal:
 	@rm -f results/current_*.npz || true
 	@echo "Clean minimal complete."
 
+
+# Open the HTML file
+open-html:
+ifeq ($(UNAME), Linux)
+	xdg-open frontend/index.html
+else ifeq ($(UNAME), Darwin)
+	open frontend/index.html
+else ifeq ($(UNAME), Windows_NT)
+	start frontend/index.html
+endif
 
